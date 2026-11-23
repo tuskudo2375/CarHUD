@@ -114,9 +114,11 @@ class BluetoothBridgeService : Service() {
                     val line = reader.readLine() ?: break
                     try {
                         val message = JSONObject(line)
-                        if (message.optString("type") == "REPLY") {
-                            CompanionNotifService.instance?.executeQuickReply(
-                                message.optString("key"), message.optString("message")
+                        if (message.optString("type") == "ACTION_CLICK") {
+                            CompanionNotifService.instance?.executeAction(
+                                notifKey = message.optString("key"),
+                                actionIndex = message.optInt("actionIndex", -1),
+                                replyMessage = message.optString("message").takeIf { it.isNotEmpty() }
                             )
                         }
                     } catch (e: Exception) {

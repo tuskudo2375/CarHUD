@@ -40,7 +40,9 @@ class HeadUnitService : Service() {
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        overlayManager = OverlayNotifManager(this) { key, message -> sendQuickReply(key, message) }
+        overlayManager = OverlayNotifManager(this) { key, actionIndex, replyText ->
+            sendActionClick(key, actionIndex, replyText)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -108,9 +110,10 @@ class HeadUnitService : Service() {
             }
             "NOTIF" -> overlayManager.show(
                 key = message.optString("key"),
-                sender = message.optString("title"),
-                message = message.optString("text"),
-                canReply = message.optBoolean("canReply")
+                appName = message.optString("appName"),
+                title = message.optString("title"),
+                text = message.optString("text"),
+                actions = message.optJSONArray("actions") ?: org.json.JSONArray()
             )
         }
     }
@@ -153,11 +156,16 @@ class HeadUnitService : Service() {
         }
     }
 
-    private fun sendQuickReply(key: String, text: String) {
+    private fun sendActionClick(key: String, actionIndex: Int, replyText: String?) {
         val peer = clientSocket ?: return
         if (!peer.isConnected) return
         try {
-            val json = JSONObject().put("type", "REPLY").put("key", key).put("message", text).toString()
+            val json = JSONObject()
+                .put("type", "ACTION_CLICK")
+                .put("key", key)
+                .put("actionIndex", actionIndex)
+                .put("message", replyText ?: "")
+                .toString()
             synchronized(writeLock) {
                 peer.outputStream.write((json + "\n").toByteArray(StandardCharsets.UTF_8))
                 peer.outputStream.flush()
@@ -207,4 +215,3 @@ class HeadUnitService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 }
-

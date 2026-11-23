@@ -4,6 +4,9 @@
     android:layout_width="match_parent" android:layout_height="wrap_content"
     android:orientation="vertical" android:padding="16dp"
     android:background="@drawable/overlay_notification_card">
+    <TextView android:id="@+id/tvAppName" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginBottom="6dp"
+        android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="3dp" android:paddingBottom="3dp"
+        android:background="#263F5362" android:text="App" android:textColor="#80DEEA" android:textSize="12sp" />
     <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
         <TextView android:id="@+id/tvOverlaySender" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
             android:text="Thông báo" android:textColor="#FFCA28" android:textSize="20sp" android:textStyle="bold" />
@@ -12,10 +15,5 @@
     </LinearLayout>
     <TextView android:id="@+id/tvOverlayMessage" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp"
         android:textColor="#FFFFFF" android:textSize="18sp" />
-    <LinearLayout android:id="@+id/layoutOverlayReplies" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
-        <Button android:id="@+id/btnOverlayReply1" android:layout_width="match_parent" android:layout_height="52dp" android:layout_marginTop="10dp"
-            android:text="Đang lái xe, lát gọi lại!" android:textColor="#FFFFFF" android:backgroundTint="#1E88E5" />
-        <Button android:id="@+id/btnOverlayReply2" android:layout_width="match_parent" android:layout_height="52dp" android:layout_marginTop="6dp"
-            android:text="OK, đang qua liền!" android:textColor="#FFFFFF" android:backgroundTint="#43A047" />
-    </LinearLayout>
+    <LinearLayout android:id="@+id/layoutActions" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
 </LinearLayout>
