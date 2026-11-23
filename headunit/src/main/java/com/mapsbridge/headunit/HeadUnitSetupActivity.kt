@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -20,6 +21,7 @@ class HeadUnitSetupActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(24, 24, 24, 24)
@@ -36,6 +38,14 @@ class HeadUnitSetupActivity : Activity() {
         root.addView(Button(this).apply {
             text = "2. Bật chế độ chờ nhận từ Xiaomi"
             setOnClickListener { startHeadUnitService() }
+        })
+        root.addView(Button(this).apply {
+            text = "Dừng dịch vụ (Cho phép tắt màn hình)"
+            setOnClickListener {
+                stopService(Intent(this@HeadUnitSetupActivity, HeadUnitService::class.java))
+                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                status.text = "Đã dừng dịch vụ. Màn hình được phép tắt."
+            }
         })
         setContentView(root)
         val permissions = missingRuntimePermissions()

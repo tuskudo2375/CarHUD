@@ -19,7 +19,8 @@ import org.json.JSONArray
 
 class OverlayNotifManager(
     context: Context,
-    private val onActionClick: (String, Int, String?) -> Unit
+    private val onActionClick: (String, Int, String?) -> Unit,
+    private val onReturnToMaps: () -> Unit
 ) {
     private val appContext = context.applicationContext
     private val windowManager = appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -41,6 +42,10 @@ class OverlayNotifManager(
             val actionContainer = view.findViewById<LinearLayout>(R.id.layoutActions)
             actionContainer.removeAllViews()
             view.findViewById<Button>(R.id.btnOverlayClose).setOnClickListener { dismiss() }
+            view.findViewById<Button>(R.id.btnOverlayBackToMaps).setOnClickListener {
+                onReturnToMaps()
+                dismiss()
+            }
 
             var replyActionsAdded = false
             for (position in 0 until actions.length()) {
@@ -65,11 +70,13 @@ class OverlayNotifManager(
                     }
                 }
             }
-
             val params = WindowManager.LayoutParams(
                 dp(360), WindowManager.LayoutParams.WRAP_CONTENT,
                 WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
                 PixelFormat.TRANSLUCENT
             ).apply {
                 gravity = Gravity.TOP or Gravity.END

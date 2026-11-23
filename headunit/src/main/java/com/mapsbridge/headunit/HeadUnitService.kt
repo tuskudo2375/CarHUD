@@ -8,12 +8,19 @@ import android.app.Service
 import android.bluetooth.BluetoothAdapter
 import android.bluetooth.BluetoothServerSocket
 import android.bluetooth.BluetoothSocket
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
+import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
+import android.graphics.PixelFormat
+import android.provider.Settings
+import android.view.Gravity
+import android.view.View
+import android.view.WindowManager
 import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
@@ -36,17 +43,22 @@ class HeadUnitService : Service() {
     @Volatile private var serverThread: Thread? = null
     @Volatile private var status = "Đang chờ Xiaomi kết nối"
     private lateinit var overlayManager: OverlayNotifManager
+    private var keepAwakeWindowManager: WindowManager? = null
+    private var keepAwakeView: View? = null
 
     override fun onCreate() {
         super.onCreate()
         createNotificationChannel()
-        overlayManager = OverlayNotifManager(this) { key, actionIndex, replyText ->
-            sendActionClick(key, actionIndex, replyText)
-        }
+        overlayManager = OverlayNotifManager(
+            this,
+            onActionClick = { key, actionIndex, replyText -> sendActionClick(key, actionIndex, replyText) },
+            onReturnToMaps = ::openMapsHome
+        )
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         startForeground(NOTIFICATION_ID, buildNotification(status))
+        attachKeepAwakeOverlay()
         if (running.compareAndSet(false, true)) {
             serverThread = Thread(::serverLoop, "MapsBridge-RFCOMM-Server").also { it.start() }
         }
@@ -96,6 +108,7 @@ class HeadUnitService : Service() {
         }
         when (message.optString("type")) {
             "NAV_SHARE" -> {
+                wakeScreen()
                 val payload = message.optString("payload")
                 Thread({
                     val resolved = UrlResolver.extractDestination(payload)
@@ -108,14 +121,61 @@ class HeadUnitService : Service() {
                     }
                 }, "MapsBridge-Resolve-URL").start()
             }
-            "NOTIF" -> overlayManager.show(
-                key = message.optString("key"),
-                appName = message.optString("appName"),
-                title = message.optString("title"),
-                text = message.optString("text"),
-                actions = message.optJSONArray("actions") ?: org.json.JSONArray()
-            )
+            "NOTIF" -> {
+                wakeScreen()
+                overlayManager.show(
+                    key = message.optString("key"),
+                    appName = message.optString("appName"),
+                    title = message.optString("title"),
+                    text = message.optString("text"),
+                    actions = message.optJSONArray("actions") ?: org.json.JSONArray()
+                )
+            }
         }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun wakeScreen() {
+        try {
+            val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+            val wakeLock = pm.newWakeLock(
+                PowerManager.FULL_WAKE_LOCK or
+                    PowerManager.ACQUIRE_CAUSES_WAKEUP or
+                    PowerManager.ON_AFTER_RELEASE,
+                "MapsBridge:WakeLock"
+            )
+            wakeLock.acquire(5_000L)
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not wake screen", e)
+        }
+    }
+
+    private fun attachKeepAwakeOverlay() {
+        if (keepAwakeView != null || !Settings.canDrawOverlays(this)) return
+        val manager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val view = View(this).apply { alpha = 0f }
+        val params = WindowManager.LayoutParams(
+            1, 1,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+            PixelFormat.TRANSLUCENT
+        ).apply { gravity = Gravity.TOP or Gravity.START }
+        try {
+            manager.addView(view, params)
+            keepAwakeWindowManager = manager
+            keepAwakeView = view
+        } catch (e: Exception) {
+            Log.w(TAG, "Could not attach keep-awake overlay", e)
+        }
+    }
+
+    private fun detachKeepAwakeOverlay() {
+        val view = keepAwakeView ?: return
+        runCatching { keepAwakeWindowManager?.removeView(view) }
+        keepAwakeView = null
+        keepAwakeWindowManager = null
     }
 
     private fun launchGoogleMapsNavigation(query: String) {
@@ -153,6 +213,18 @@ class HeadUnitService : Service() {
         } catch (e: Exception) {
             Log.e(TAG, "Unable to open shared URL in Google Maps", e)
             updateStatus("Không mở được liên kết trong Google Maps")
+        }
+    }
+
+    private fun openMapsHome() {
+        try {
+            val launchIntent = packageManager.getLaunchIntentForPackage("com.google.android.apps.maps")
+                ?: error("Google Maps không được cài đặt")
+            launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
+            startActivity(launchIntent)
+        } catch (e: Exception) {
+            Log.e(TAG, "Unable to bring Google Maps to the foreground", e)
+            updateStatus("Không mở được Google Maps")
         }
     }
 
@@ -210,6 +282,7 @@ class HeadUnitService : Service() {
         try { clientSocket?.close() } catch (_: Exception) { }
         serverThread?.interrupt()
         if (::overlayManager.isInitialized) overlayManager.dismiss()
+        detachKeepAwakeOverlay()
         super.onDestroy()
     }
 

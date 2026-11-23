@@ -16,4 +16,6 @@
     <TextView android:id="@+id/tvOverlayMessage" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp"
         android:textColor="#FFFFFF" android:textSize="18sp" />
     <LinearLayout android:id="@+id/layoutActions" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
+    <Button android:id="@+id/btnOverlayBackToMaps" android:layout_width="match_parent" android:layout_height="44dp" android:layout_marginTop="6dp"
+        android:text="Về Maps" android:textColor="#FFFFFF" android:backgroundTint="#263238" />
 </LinearLayout>
