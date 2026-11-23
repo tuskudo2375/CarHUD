@@ -43,6 +43,9 @@ jobs:
           cp companion/build/outputs/apk/debug/companion-debug.apk output/CarHUD-Companion.apk
           cp headunit/build/outputs/apk/debug/headunit-debug.apk output/CarHUD-HeadUnit.apk
 
+      - name: Report APK file sizes
+        run: stat -c '%n %s bytes' output/*.apk
+
       - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
