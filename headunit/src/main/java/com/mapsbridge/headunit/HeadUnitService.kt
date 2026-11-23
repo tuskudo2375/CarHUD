@@ -115,22 +115,49 @@ class HeadUnitService : Service() {
                     val query = resolved.query
                     val fallbackUrl = resolved.fallbackUrl
                     when {
-                        !query.isNullOrBlank() -> launchGoogleMapsNavigation(query)
-                        !fallbackUrl.isNullOrBlank() -> openUrlInGoogleMaps(fallbackUrl)
+                        !query.isNullOrBlank() -> launchNavLauncher(
+                            NavLauncherActivity.EXTRA_NAV_URI,
+                            "google.navigation:q=${Uri.encode(query)}&mode=l",
+                            query
+                        )
+                        !fallbackUrl.isNullOrBlank() -> launchNavLauncher(
+                            NavLauncherActivity.EXTRA_FALLBACK_URL,
+                            fallbackUrl,
+                            null
+                        )
                         else -> updateStatus("Không nhận diện được địa điểm")
                     }
                 }, "MapsBridge-Resolve-URL").start()
             }
             "NOTIF" -> {
-                wakeScreen()
-                overlayManager.show(
-                    key = message.optString("key"),
-                    appName = message.optString("appName"),
-                    title = message.optString("title"),
-                    text = message.optString("text"),
-                    actions = message.optJSONArray("actions") ?: org.json.JSONArray()
-                )
+                val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+                if (powerManager.isInteractive) {
+                    overlayManager.show(
+                        key = message.optString("key"),
+                        appName = message.optString("appName"),
+                        title = message.optString("title"),
+                        text = message.optString("text"),
+                        actions = message.optJSONArray("actions") ?: org.json.JSONArray()
+                    )
+                }
             }
+        }
+    }
+
+    private fun launchNavLauncher(extraName: String, extraValue: String, queryForStatus: String?) {
+        try {
+            val launcherIntent = Intent(this, NavLauncherActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                putExtra(extraName, extraValue)
+            }
+            startActivity(launcherIntent)
+            updateStatus(
+                if (queryForStatus != null) "Đang dẫn đường đến $queryForStatus"
+                else "Đang mở liên kết trong Google Maps"
+            )
+        } catch (e: Exception) {
+            Log.e(TAG, "Unable to launch Google Maps trampoline", e)
+            updateStatus("Không mở được Google Maps")
         }
     }
 

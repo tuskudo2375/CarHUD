@@ -17,6 +17,12 @@
         <activity android:name=".HeadUnitSetupActivity" android:exported="true">
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
         </activity>
+        <activity
+            android:name=".NavLauncherActivity"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:launchMode="singleInstance"
+            android:exported="false" />
         <service android:name=".HeadUnitService" android:exported="false" android:foregroundServiceType="connectedDevice" />
     </application>
 </manifest>
