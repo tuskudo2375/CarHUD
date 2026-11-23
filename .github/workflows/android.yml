@@ -1,4 +1,4 @@
-name: Build Android APKs
+name: Build MapsBridge APKs
 
 on:
   push:
@@ -26,13 +26,13 @@ jobs:
         with:
           packages: platform-tools
 
-      - name: Set up Gradle 8.2.1
+      - name: Set up Gradle 8.7
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.2.1'
+          gradle-version: '8.7'
 
-      - name: Install Android 34 build tools
-        run: sdkmanager "platforms;android-34" "build-tools;34.0.0"
+      - name: Install Android 35 build tools
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
 
       - name: Build debug APKs
         run: gradle --no-daemon :companion:assembleDebug :headunit:assembleDebug
@@ -40,8 +40,8 @@ jobs:
       - name: Prepare APK downloads
         run: |
           mkdir -p output
-          cp companion/build/outputs/apk/debug/companion-debug.apk output/CarHUD-Companion.apk
-          cp headunit/build/outputs/apk/debug/headunit-debug.apk output/CarHUD-HeadUnit.apk
+          cp companion/build/outputs/apk/debug/companion-debug.apk output/MapsBridge-Xiaomi.apk
+          cp headunit/build/outputs/apk/debug/headunit-debug.apk output/MapsBridge-Note8.apk
 
       - name: Report APK file sizes
         run: stat -c '%n %s bytes' output/*.apk
@@ -49,8 +49,7 @@ jobs:
       - name: Upload APKs
         uses: actions/upload-artifact@v4
         with:
-          name: CarHUD-APKs
+          name: MapsBridge-APKs
           path: output/*.apk
           if-no-files-found: error
           retention-days: 14
-

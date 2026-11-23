@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/overlayCard"
+    android:layout_width="match_parent" android:layout_height="wrap_content"
+    android:orientation="vertical" android:padding="16dp"
+    android:background="@drawable/overlay_notification_card">
+    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+        <TextView android:id="@+id/tvOverlaySender" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+            android:text="Thông báo" android:textColor="#FFCA28" android:textSize="20sp" android:textStyle="bold" />
+        <Button android:id="@+id/btnOverlayClose" android:layout_width="48dp" android:layout_height="48dp" android:minWidth="0dp" android:minHeight="0dp"
+            android:text="×" android:textColor="#FFFFFF" android:textSize="24sp" android:backgroundTint="#303030" />
+    </LinearLayout>
+    <TextView android:id="@+id/tvOverlayMessage" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp"
+        android:textColor="#FFFFFF" android:textSize="18sp" />
+    <LinearLayout android:id="@+id/layoutOverlayReplies" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" android:visibility="gone">
+        <Button android:id="@+id/btnOverlayReply1" android:layout_width="match_parent" android:layout_height="52dp" android:layout_marginTop="10dp"
+            android:text="Đang lái xe, lát gọi lại!" android:textColor="#FFFFFF" android:backgroundTint="#1E88E5" />
+        <Button android:id="@+id/btnOverlayReply2" android:layout_width="match_parent" android:layout_height="52dp" android:layout_marginTop="6dp"
+            android:text="OK, đang qua liền!" android:textColor="#FFFFFF" android:backgroundTint="#43A047" />
+    </LinearLayout>
+</LinearLayout>

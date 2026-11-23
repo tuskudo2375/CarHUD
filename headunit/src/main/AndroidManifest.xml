@@ -2,9 +2,17 @@
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <application android:allowBackup="false" android:label="CarHUD Head Unit" android:theme="@style/Theme.AppCompat.NoActionBar">
-        <activity android:name=".HeadUnitActivity" android:screenOrientation="sensorLandscape" android:exported="true">
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-feature android:name="android.hardware.bluetooth" android:required="true" />
+    <application android:allowBackup="false" android:label="MapsBridge Note8" android:theme="@style/Theme.AppCompat.NoActionBar">
+        <activity android:name=".HeadUnitSetupActivity" android:exported="true">
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
         </activity>
+        <service android:name=".HeadUnitService" android:exported="false" android:foregroundServiceType="connectedDevice" />
     </application>
 </manifest>
