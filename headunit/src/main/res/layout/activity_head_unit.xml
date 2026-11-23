@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="horizontal" android:weightSum="10" android:padding="16dp"
+    android:background="#000000">
+
+    <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="5.5"
+        android:orientation="vertical" android:padding="16dp" android:background="#121212">
+        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
+            <TextClock android:layout_width="wrap_content" android:layout_height="wrap_content" android:format24Hour="HH:mm"
+                android:textSize="36sp" android:textStyle="bold" android:textColor="#FFFFFF" />
+            <TextView android:id="@+id/tvStatus" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
+                android:gravity="end" android:text="Starting Bluetooth…" android:textSize="14sp" android:textColor="#00C853" />
+        </LinearLayout>
+        <View android:layout_width="match_parent" android:layout_height="1dp" android:layout_marginTop="14dp" android:layout_marginBottom="20dp" android:background="#424242" />
+        <TextView android:id="@+id/tvNavTitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Waiting for navigation" android:textSize="32sp" android:textStyle="bold" android:textColor="#00E5FF" />
+        <TextView android:id="@+id/tvNavDetail" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="" android:textSize="22sp" android:textColor="#BDBDBD" />
+    </LinearLayout>
+
+    <LinearLayout android:layout_width="0dp" android:layout_height="match_parent" android:layout_weight="4.5" android:layout_marginStart="16dp"
+        android:orientation="vertical" android:padding="16dp" android:background="#121212">
+        <TextView android:id="@+id/tvNotifSender" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Notifications" android:textSize="24sp" android:textStyle="bold" android:textColor="#FFCA28" />
+        <TextView android:id="@+id/tvNotifMessage" android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1"
+            android:layout_marginTop="8dp" android:text="" android:textSize="20sp" android:textColor="#FFFFFF" />
+        <LinearLayout android:id="@+id/layoutQuickReply" android:layout_width="match_parent" android:layout_height="wrap_content"
+            android:orientation="vertical" android:visibility="gone">
+            <Button android:id="@+id/btnReply1" android:layout_width="match_parent" android:layout_height="52dp" android:layout_marginBottom="8dp"
+                android:text="Đang lái xe, lát gọi lại nhé!" android:textColor="#FFFFFF" android:backgroundTint="#1E88E5" />
+            <Button android:id="@+id/btnReply2" android:layout_width="match_parent" android:layout_height="52dp"
+                android:text="OK, đang qua liền!" android:textColor="#FFFFFF" android:backgroundTint="#43A047" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>
