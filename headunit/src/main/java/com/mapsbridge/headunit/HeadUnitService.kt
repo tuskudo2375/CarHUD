@@ -122,7 +122,7 @@ class HeadUnitService : Service() {
             return
         }
         try {
-            val uri = Uri.parse("google.navigation:q=${Uri.encode(query)}")
+            val uri = Uri.parse("google.navigation:q=${Uri.encode(query)}&mode=l")
             val mapIntent = Intent(Intent.ACTION_VIEW, uri).apply {
                 setPackage("com.google.android.apps.maps")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
@@ -207,3 +207,4 @@ class HeadUnitService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 }
+
