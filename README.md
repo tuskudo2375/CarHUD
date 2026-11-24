@@ -1,6 +1,12 @@
 # MapsBridge
 
-MapsBridge kết nối điện thoại **Chính** với thiết bị **Phụ** bằng Bluetooth Classic RFCOMM. Máy Chính có thể gửi địa điểm sang Google Maps trên Máy Phụ và chuyển tiếp thông báo cùng các thao tác gốc có sẵn.
+> **Biến điện thoại Android cũ (Android 8.0 trở lên) thành màn hình Google Maps và thông báo chuyên dụng cho xe máy hoặc ô tô.**
+>
+> Cất điện thoại chính an toàn trong túi; dùng máy phụ làm màn hình trên xe để đỡ phơi chiếc máy đắt tiền dưới nắng mưa hay để hớ hênh ngoài đường. Ghép đôi và cấp quyền một lần, sau đó chỉ cần **Chia sẻ → Dẫn đường trên Máy Phụ**: Bluetooth chuyển địa điểm, máy phụ tự bật màn hình và mở Google Maps dẫn đường xe máy.
+>
+> Máy phụ không cần SIM 4G riêng. Google Maps vẫn cần Internet qua Wi‑Fi/điểm phát sóng, hoặc bản đồ ngoại tuyến đã tải sẵn cho khu vực đi đường.
+
+MapsBridge truyền địa điểm và thông báo giữa hai thiết bị qua Bluetooth Classic RFCOMM.
 
 ## Ứng dụng làm gì?
 

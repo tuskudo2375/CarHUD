@@ -53,13 +53,14 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: MapsBridge v1.0
           body: |
-            Bản phát hành MapsBridge gồm hai APK debug:
+            Biến điện thoại Android cũ (Android 8.0 trở lên) thành màn hình dẫn đường Google Maps và hiển thị thông báo chuyên dụng cho xe máy/ô tô.
 
-            - **MapsBridge Chính**: chia sẻ địa điểm một chạm, chuyển tiếp thông báo và các thao tác gốc sang Máy Phụ.
-            - **MapsBridge Phụ**: nhận tuyến đường và mở Google Maps dẫn đường xe máy; có launcher tùy chỉnh, dock ứng dụng và lịch dương/âm.
-            - Màn hình launcher được phép tự tắt khi chờ; dịch vụ Bluetooth vẫn chạy nền và tuyến đường mới có thể đánh thức màn hình.
+            - **Một chạm là đi:** chia sẻ địa điểm từ Máy Chính; Máy Phụ nhận qua Bluetooth, tự bật màn hình và mở Google Maps dẫn đường xe máy.
+            - **Thông báo hữu ích:** xem thông báo và thao tác gốc tương thích ngay trên Máy Phụ.
+            - **Không cần SIM 4G riêng ở Máy Phụ:** Google Maps có thể dùng Wi‑Fi/điểm phát sóng hoặc bản đồ ngoại tuyến đã tải.
+            - Launcher Máy Phụ có dock tùy chỉnh, ngăn ứng dụng, hình nền riêng và lịch dương/âm; màn hình được phép ngủ khi chờ.
 
-            **Tương thích Android:** cả APK Chính và APK Phụ đều yêu cầu Android 8.0 Oreo trở lên (API 26). Cả hai là APK universal, không chứa thư viện native theo ABI.
+            **Tương thích:** cả APK Chính và Phụ yêu cầu Android 8.0 Oreo trở lên (API 26). APK universal, không giới hạn ABI.
           draft: false
           prerelease: false
           overwrite_files: true
