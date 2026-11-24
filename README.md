@@ -1,48 +1,112 @@
 # MapsBridge
 
-MapsBridge kết nối điện thoại **Chính** với thiết bị **Phụ** qua Bluetooth Classic RFCOMM. Máy Chính chia sẻ địa điểm, thông báo và các thao tác gốc của thông báo sang Máy Phụ.
+MapsBridge kết nối điện thoại **Chính** với thiết bị **Phụ** bằng Bluetooth Classic RFCOMM. Máy Chính có thể gửi địa điểm sang Google Maps trên Máy Phụ và chuyển tiếp thông báo cùng các thao tác gốc có sẵn.
 
-## Tính năng
+## Ứng dụng làm gì?
 
-- **Chia sẻ đường đi một chạm:** Trong Google Maps hoặc ứng dụng bản đồ, chọn Chia sẻ → **Dẫn đường trên Máy Phụ**. Máy Phụ giải mã liên kết, mở Google Maps ở chế độ dẫn đường xe máy (`mode=l`) và đánh thức màn hình nếu đang ngủ.
-- **Thông báo trên Máy Phụ:** Chuyển tiếp thông báo từ ứng dụng người dùng, kèm tên ứng dụng, biểu tượng và các nút hành động gốc mà thông báo cung cấp, như xác nhận hoặc đánh dấu đã đọc. Nút trả lời bằng văn bản tự do (`RemoteInput`) hiện không được chuyển tiếp.
-- **Kết nối tự phục hồi:** RFCOMM tự nghe lại khi mất kết nối; heartbeat giúp phát hiện đường truyền bị treo. Dịch vụ Máy Phụ tự khởi chạy khi mở launcher và sau khi khởi động lại thiết bị.
-- **Launcher Máy Phụ:** Có thể đặt MapsBridge làm màn hình chính; launcher có dock ứng dụng tùy chỉnh, ngăn ứng dụng, hình nền chọn riêng, đồng hồ, ngày dương và lịch âm Việt Nam.
-- **Hạn chế sáng màn hình chờ:** Launcher không khóa màn hình luôn bật. Màn hình có thể tắt theo thời gian chờ; CPU vẫn được giữ hoạt động cho Bluetooth. Thông báo không tự đánh thức màn hình, còn tuyến đường mới có thể đánh thức để mở Maps.
+- Chia sẻ một địa điểm từ menu Chia sẻ của Maps hoặc ứng dụng bản đồ; Máy Phụ phân tích liên kết và mở Google Maps ở chế độ dẫn đường xe máy (`mode=l`). Nếu màn hình đang ngủ, tuyến đường mới đánh thức màn hình để mở Maps.
+- Chuyển tiếp thông báo từ ứng dụng người dùng, cùng tên ứng dụng, biểu tượng, tiêu đề, nội dung và tối đa ba nút hành động gốc.
+- Hiển thị banner thông báo trên Máy Phụ khi màn hình đang hoạt động. Chạm nút trên banner sẽ gửi lệnh về Máy Chính để thực hiện hành động gốc.
+- Duy trì kết nối RFCOMM bằng heartbeat và tự nghe lại khi mất kết nối. Dịch vụ Máy Phụ tự khởi chạy khi mở ứng dụng và sau khi thiết bị khởi động lại.
+- Cung cấp launcher tùy chọn trên Máy Phụ với dock ứng dụng tùy chỉnh, ngăn ứng dụng, hình nền riêng, đồng hồ và lịch dương/âm.
+- Cho phép màn hình launcher ngủ theo thời gian chờ. Dịch vụ giữ CPU hoạt động để duy trì Bluetooth; thông báo không đánh thức màn hình.
 
-Hai ứng dụng dùng chung UUID RFCOMM `fa87c0d0-afac-11de-8a39-0800200c9a66`, trao đổi JSON UTF-8 theo từng dòng. Ứng dụng không cần Android Auto hay Google Play Services để truyền dữ liệu.
+Thông báo hệ thống, thông báo đang chạy liên tục, thông báo Maps và thông báo nhóm bị lọc. Các nút yêu cầu nhập câu trả lời (`RemoteInput`) hiện không được chuyển tiếp; chỉ các thao tác gốc không cần nhập văn bản mới xuất hiện.
+
+## Sơ đồ hoạt động
+
+```mermaid
+flowchart LR
+    subgraph P[Điện thoại Chính · companion]
+        Share[Chia sẻ địa điểm]
+        NavMsg[Đóng gói NAV_SHARE]
+        Listener[Notification Listener]
+        NotifMsg[Đóng gói NOTIF]
+        Ping[Gửi PING mỗi 5 giây]
+        RunAction[Thực hiện hành động gốc]
+        Share --> NavMsg
+        Listener --> NotifMsg
+    end
+
+    subgraph Link[Bluetooth Classic RFCOMM]
+        Wire[UUID dùng chung<br/>JSON UTF-8, mỗi gói kết thúc bằng newline]
+    end
+
+    subgraph H[Thiết bị Phụ · headunit]
+        Server[Foreground service<br/>nghe và tự kết nối lại]
+        Resolve[Phân tích liên kết địa điểm]
+        Wake[Đánh thức màn hình khi có NAV_SHARE]
+        Maps[Mở Google Maps<br/>dẫn đường xe máy]
+        Banner[Hiện banner nếu màn hình đang hoạt động]
+        Click[Người dùng chạm nút hành động]
+        Watchdog[Watchdog: ngắt kết nối treo<br/>rồi mở lại RFCOMM]
+        Server --> Resolve --> Wake --> Maps
+        Server --> Banner --> Click
+        Server --> Watchdog
+    end
+
+    NavMsg --> Wire
+    NotifMsg --> Wire
+    Ping --> Wire
+    Wire --> Server
+    Click -->|ACTION_CLICK| Wire
+    Wire --> RunAction
+```
+
+## Quy cách kết nối và gói tin
+
+| Thuộc tính | Quy cách |
+|---|---|
+| Kết nối | Bluetooth Classic RFCOMM, điện thoại Chính kết nối tới thiết bị Phụ đã ghép đôi |
+| UUID | `fa87c0d0-afac-11de-8a39-0800200c9a66` |
+| Mã hóa/đóng khung | JSON UTF-8, mỗi gói nằm trên một dòng và kết thúc bằng `\n` |
+| Heartbeat | Máy Chính gửi `PING` mỗi 5 giây; Máy Phụ ngắt socket nếu không nhận gói nào trong 12 giây và tự nghe lại |
+| Chia sẻ đích | Máy Chính → Máy Phụ: `NAV_SHARE`, trường `payload` chứa nội dung chia sẻ hoặc URL bản đồ |
+| Thông báo | Máy Chính → Máy Phụ: `NOTIF`, gồm `key`, `appName`, `icon` (PNG Base64), `title`, `text`, `actions[]` |
+| Bấm nút thông báo | Máy Phụ → Máy Chính: `ACTION_CLICK`, gồm `key` và `actionIndex` |
+
+Ví dụ gói tin:
+
+```json
+{"type":"NAV_SHARE","payload":"<nội dung chia sẻ địa điểm>"}
+{"type":"NOTIF","key":"<notification-key>","appName":"<tên ứng dụng>","icon":"<PNG Base64>","title":"<tiêu đề>","text":"<nội dung>","actions":[{"index":0,"title":"Đánh dấu đã đọc"}]}
+{"type":"PING"}
+{"type":"ACTION_CLICK","key":"<notification-key>","actionIndex":0}
+```
+
+Máy Phụ dùng `google.navigation:q=…&mode=l` để yêu cầu Google Maps mở tuyến đường xe máy. Cả hai ứng dụng hoạt động trực tiếp qua RFCOMM, không cần Android Auto.
 
 ## Khả năng tương thích
 
 | APK | Module | minSdk | Android tối thiểu | targetSdk | compileSdk | versionName | ABI |
 |---|---|---:|---|---:|---:|---|---|
-| MapsBridge Chính | `:companion` | 26 | Android 8.0 Oreo | 34 | 35 | `1.0` | Universal: `armeabi-v7a`, `arm64-v8a`, `x86`, `x86_64` |
-| MapsBridge Phụ | `:headunit` | 26 | Android 8.0 Oreo | 34 | 35 | `1.0` | Universal: `armeabi-v7a`, `arm64-v8a`, `x86`, `x86_64` |
+| MapsBridge Chính | `:companion` | 26 | Android 8.0 Oreo | 34 | 35 | `1.0` | Universal; không chứa thư viện native |
+| MapsBridge Phụ | `:headunit` | 26 | Android 8.0 Oreo | 34 | 35 | `1.0` | Universal; không chứa thư viện native |
 
-Cả hai APK hiện không chứa thư viện native theo ABI; Android chọn runtime phù hợp với thiết bị. `targetSdk` là mức API ứng dụng khai báo mục tiêu, còn `compileSdk` là phiên bản SDK dùng khi biên dịch, không phải mức Android tối thiểu.
+Do không đóng gói thư viện native, Android dùng runtime tương ứng với thiết bị; APK không bị giới hạn vào một ABI cụ thể. `targetSdk` là mức API ứng dụng khai báo mục tiêu; `compileSdk` là SDK dùng để biên dịch, không phải mức Android tối thiểu.
 
 ## Cài đặt nhanh
 
 ### Máy Chính
 
 1. Tải và cài `MapsBridge-Chinh.apk`.
-2. Bật Bluetooth và ghép đôi với Máy Phụ trong Cài đặt Android.
-3. Mở MapsBridge Chính, chọn thiết bị Phụ đã ghép đôi và cấp quyền **Thiết bị ở gần** nếu Android yêu cầu.
-4. Nếu muốn nhận thông báo trên Máy Phụ, mở **Quyền truy cập thông báo** trong ứng dụng và bật MapsBridge.
-5. Trong Maps hoặc ứng dụng bản đồ, nhấn **Chia sẻ** rồi chọn **Dẫn đường trên Máy Phụ**.
+2. Bật Bluetooth, ghép đôi với Máy Phụ trong Cài đặt Android, rồi chọn thiết bị đó trong MapsBridge Chính.
+3. Cấp quyền **Thiết bị ở gần** nếu Android yêu cầu.
+4. Muốn chuyển tiếp thông báo, bật quyền **Quyền truy cập thông báo** cho MapsBridge.
+5. Trong ứng dụng bản đồ, chọn **Chia sẻ** → **Dẫn đường trên Máy Phụ**.
 
 ### Máy Phụ
 
-1. Tải và cài `MapsBridge-Phu.apk`, sau đó bật Bluetooth và ghép đôi với Máy Chính.
-2. Mở MapsBridge Phụ, cấp quyền **Thiết bị ở gần** và **Thông báo** nếu hệ thống yêu cầu.
-3. Cấp quyền **Hiển thị trên ứng dụng khác** để hiện banner thông báo. Quyền này không làm sáng màn hình khi thông báo đến.
-4. Muốn dùng giao diện launcher, chọn MapsBridge làm ứng dụng **Màn hình chính**. Nhấn giữ trạng thái ở góc trái để mở tùy chọn; nhấn giữ một biểu tượng dock để đổi ứng dụng.
+1. Tải và cài `MapsBridge-Phu.apk`, bật Bluetooth và ghép đôi với Máy Chính.
+2. Mở ứng dụng và cấp quyền **Thiết bị ở gần**, **Thông báo** nếu được yêu cầu.
+3. Cấp quyền **Hiển thị trên ứng dụng khác** để xem banner thông báo.
+4. Có thể chọn MapsBridge làm **Màn hình chính**. Nhấn giữ biểu tượng dock để thay lối tắt; nhấn giữ viên trạng thái để mở tùy chọn launcher.
 
-Cho phép cài đặt ứng dụng từ trình duyệt hoặc trình quản lý tệp nếu Android chặn APK tải ngoài Play Store. Sau khi thiết lập, giữ Bluetooth bật trên cả hai thiết bị.
+Giữ Bluetooth bật trên cả hai thiết bị. Banner chỉ hiện khi màn hình Máy Phụ đang hoạt động; thông báo không làm sáng màn hình.
 
 ## Tải APK và build
 
-Các APK mới nhất được đính kèm trong [GitHub Releases](https://github.com/tuskudo2375/MapsBridge/releases). GitHub Actions cũng build hai APK debug khi có commit lên `main`; artifact có tên `MapsBridge-APKs`.
+APK phát hành có tại [GitHub Releases](https://github.com/tuskudo2375/MapsBridge/releases). GitHub Actions cũng build APK debug trên các commit vào `main`; artifact có tên `MapsBridge-APKs`.
 
 Build thủ công với JDK 17, Android SDK platform 35, build tools 35.0.0 và Gradle 8.7:
 

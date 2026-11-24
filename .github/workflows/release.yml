@@ -56,7 +56,7 @@ jobs:
             Bản phát hành MapsBridge gồm hai APK debug:
 
             - **MapsBridge Chính**: chia sẻ địa điểm một chạm, chuyển tiếp thông báo và các thao tác gốc sang Máy Phụ.
-            - **MapsBridge Phụ**: nhận tuyến đường và mở Google Maps dẫn đường xe máy; có launcher tùy chỉnh, dock ứng dụng và hình nền demo không chứa QR cá nhân.
+            - **MapsBridge Phụ**: nhận tuyến đường và mở Google Maps dẫn đường xe máy; có launcher tùy chỉnh, dock ứng dụng và lịch dương/âm.
             - Màn hình launcher được phép tự tắt khi chờ; dịch vụ Bluetooth vẫn chạy nền và tuyến đường mới có thể đánh thức màn hình.
 
             **Tương thích Android:** cả APK Chính và APK Phụ đều yêu cầu Android 8.0 Oreo trở lên (API 26). Cả hai là APK universal, không chứa thư viện native theo ABI.
