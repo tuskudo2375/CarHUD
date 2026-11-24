@@ -1,0 +1,70 @@
+name: Build and publish MapsBridge v1.0
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/release.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Set up Gradle 8.7
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Install Android 35 build tools
+        run: sdkmanager "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build both APKs
+        run: gradle --no-daemon :companion:assembleDebug :headunit:assembleDebug
+
+      - name: Prepare release APKs
+        run: |
+          mkdir -p output
+          cp companion/build/outputs/apk/debug/companion-debug.apk output/MapsBridge-Chinh.apk
+          cp headunit/build/outputs/apk/debug/headunit-debug.apk output/MapsBridge-Phu.apk
+          stat -c '%n %s bytes' output/*.apk
+
+      - name: Publish public release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: v1.0
+          target_commitish: ${{ github.sha }}
+          name: MapsBridge v1.0
+          body: |
+            Bản phát hành MapsBridge gồm hai APK debug:
+
+            - **MapsBridge Chính**: chia sẻ địa điểm một chạm, chuyển tiếp thông báo và các thao tác gốc sang Máy Phụ.
+            - **MapsBridge Phụ**: nhận tuyến đường và mở Google Maps dẫn đường xe máy; có launcher tùy chỉnh, dock ứng dụng và hình nền demo không chứa QR cá nhân.
+            - Màn hình launcher được phép tự tắt khi chờ; dịch vụ Bluetooth vẫn chạy nền và tuyến đường mới có thể đánh thức màn hình.
+
+            **Tương thích Android:** cả APK Chính và APK Phụ đều yêu cầu Android 8.0 Oreo trở lên (API 26). Cả hai là APK universal, không chứa thư viện native theo ABI.
+          draft: false
+          prerelease: false
+          overwrite_files: true
+          fail_on_unmatched_files: true
+          preserve_order: true
+          files: |
+            output/MapsBridge-Chinh.apk
+            output/MapsBridge-Phu.apk

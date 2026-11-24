@@ -168,7 +168,7 @@ class HeadUnitSetupActivity : Activity() {
     private fun loadSavedWallpaper() {
         val file = customWallpaperFile()
         if (file.isFile && displayCustomWallpaper()) return
-        wallpaperView.setImageResource(R.drawable.bg_launcher)
+        wallpaperView.setImageResource(R.drawable.bg_launcher_demo)
     }
 
     private fun displayCustomWallpaper(): Boolean {
@@ -201,7 +201,7 @@ class HeadUnitSetupActivity : Activity() {
 
     private fun restoreDefaultWallpaper() {
         customWallpaperFile().delete()
-        wallpaperView.setImageResource(R.drawable.bg_launcher)
+        wallpaperView.setImageResource(R.drawable.bg_launcher_demo)
     }
 
     private fun setupDock() {
