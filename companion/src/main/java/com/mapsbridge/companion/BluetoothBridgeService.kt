@@ -52,7 +52,7 @@ class BluetoothBridgeService : Service() {
     private val writeLock = Any()
     @Volatile private var socket: BluetoothSocket? = null
     @Volatile private var worker: Thread? = null
-    @Volatile private var connectionStatus = "Đang chờ kết nối Note8"
+    @Volatile private var connectionStatus = "Đang chờ kết nối Thiết bị Phụ"
 
     override fun onCreate() {
         super.onCreate()
@@ -109,7 +109,7 @@ class BluetoothBridgeService : Service() {
         while (running.get()) {
             val mac = getSharedPreferences(PREFS, MODE_PRIVATE).getString(PREF_NOTE8_MAC, null)
             if (mac.isNullOrBlank()) {
-                updateStatus("Chưa chọn Note8 trong MapsBridge")
+                updateStatus("Chưa chọn Thiết bị Phụ trong MapsBridge")
                 sleepBeforeRetry()
                 continue
             }
@@ -119,9 +119,9 @@ class BluetoothBridgeService : Service() {
                 val connectedSocket = adapter.getRemoteDevice(mac).createRfcommSocketToServiceRecord(SERVICE_UUID)
                 activeSocket = connectedSocket
                 socket = connectedSocket
-                updateStatus("Đang kết nối Note8…")
+                updateStatus("Đang kết nối Thiết bị Phụ…")
                 connectedSocket.connect()
-                updateStatus("Đã kết nối Note8")
+                updateStatus("Đã kết nối Thiết bị Phụ")
                 sendPendingNavigation()
                 val reader = BufferedReader(InputStreamReader(connectedSocket.inputStream, StandardCharsets.UTF_8))
                 val heartbeatRunning = AtomicBoolean(true)
@@ -181,7 +181,7 @@ class BluetoothBridgeService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "MapsBridge Bluetooth", NotificationManager.IMPORTANCE_LOW)
+            val channel = NotificationChannel(CHANNEL_ID, "MapsBridge Chính", NotificationManager.IMPORTANCE_LOW)
             (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
         }
     }
@@ -193,7 +193,7 @@ class BluetoothBridgeService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
-            .setContentTitle("MapsBridge đang chạy")
+            .setContentTitle("MapsBridge Chính đang chạy")
             .setContentText(text)
             .setContentIntent(openSetup)
             .setOngoing(true)

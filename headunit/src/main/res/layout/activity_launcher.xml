@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/launcherRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <ImageView
+        android:id="@+id/ivWallpaper"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:contentDescription="@null"
+        android:scaleType="centerCrop"
+        android:src="@drawable/bg_launcher" />
+
+    <LinearLayout
+        android:id="@+id/statusPill"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top|start"
+        android:layout_margin="12dp"
+        android:background="@drawable/launcher_status_pill"
+        android:clickable="true"
+        android:focusable="true"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:paddingStart="10dp"
+        android:paddingTop="6dp"
+        android:paddingEnd="10dp"
+        android:paddingBottom="6dp">
+
+        <View
+            android:id="@+id/viewStatusDot"
+            android:layout_width="10dp"
+            android:layout_height="10dp"
+            android:background="@drawable/launcher_status_disconnected" />
+
+        <TextView
+            android:id="@+id/tvLauncherStatus"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="7dp"
+            android:text="Đang chờ..."
+            android:textColor="#FFFFFF"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/launcherDock"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginStart="16dp"
+        android:layout_marginEnd="16dp"
+        android:layout_marginBottom="16dp"
+        android:background="@drawable/launcher_dock"
+        android:gravity="center"
+        android:orientation="horizontal"
+        android:padding="10dp">
+
+        <LinearLayout
+            android:id="@+id/dockMaps"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            style="@style/LauncherDockItem"
+            android:contentDescription="Maps">
+            <ImageView android:id="@+id/ivDockMaps" style="@style/LauncherDockIcon" android:src="@android:drawable/ic_menu_mapmode" />
+            <TextView style="@style/LauncherDockLabel" android:text="Maps" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/dockTikTok"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            style="@style/LauncherDockItem"
+            android:contentDescription="TikTok">
+            <ImageView android:id="@+id/ivDockTikTok" style="@style/LauncherDockIcon" android:src="@android:drawable/ic_media_play" />
+            <TextView style="@style/LauncherDockLabel" android:text="TikTok" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/dockYouTube"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            style="@style/LauncherDockItem"
+            android:contentDescription="YouTube">
+            <ImageView android:id="@+id/ivDockYouTube" style="@style/LauncherDockIcon" android:src="@android:drawable/ic_media_play" />
+            <TextView style="@style/LauncherDockLabel" android:text="YouTube" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:id="@+id/dockApps"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            style="@style/LauncherDockItem"
+            android:contentDescription="Ứng dụng">
+            <ImageView android:id="@+id/ivDockApps" style="@style/LauncherDockIcon" android:src="@android:drawable/ic_menu_more" />
+            <TextView style="@style/LauncherDockLabel" android:text="Ứng dụng" />
+        </LinearLayout>
+    </LinearLayout>
+</FrameLayout>

@@ -2,119 +2,228 @@ package com.mapsbridge.headunit
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlertDialog
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.pm.ResolveInfo
 import android.graphics.Color
-import android.graphics.Typeface
-import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
-import android.widget.Button
+import android.widget.BaseAdapter
+import android.widget.ImageView
 import android.widget.LinearLayout
+import android.widget.ListView
 import android.widget.TextView
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 
 class HeadUnitSetupActivity : Activity() {
-    companion object { private const val PERMISSION_REQUEST = 506 }
+    companion object {
+        private const val PERMISSION_REQUEST = 506
+        private val TIKTOK_PACKAGES = listOf("com.ss.android.ugc.trill", "com.zhiliaoapp.musically")
+    }
 
-    private lateinit var tvLiveStatus: TextView
-    private lateinit var overlayPermissionButton: Button
+    private lateinit var statusPill: View
+    private lateinit var statusDot: View
+    private lateinit var statusText: TextView
+
+    private data class AppEntry(val label: String, val packageName: String, val resolveInfo: ResolveInfo)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        applyImmersiveMode()
+        setContentView(R.layout.activity_launcher)
 
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(28), dp(24), dp(24))
-            setBackgroundColor(Color.BLACK)
+        statusPill = findViewById(R.id.statusPill)
+        statusDot = findViewById(R.id.viewStatusDot)
+        statusText = findViewById(R.id.tvLauncherStatus)
+        statusPill.setOnLongClickListener {
+            showMaintenanceOptions()
+            true
         }
-        root.addView(TextView(this).apply {
-            text = "MapsBridge Note8"
-            textSize = 25f
-            setTextColor(Color.WHITE)
-            setTypeface(typeface, Typeface.BOLD)
-        }, ViewGroup.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT))
 
-        tvLiveStatus = TextView(this).apply {
-            text = HeadUnitService.currentStatus
-            textSize = 23f
-            setTextColor(Color.rgb(0, 229, 255))
-            setTypeface(typeface, Typeface.BOLD)
-            setPadding(dp(16), dp(22), dp(16), dp(22))
-            setBackgroundColor(Color.rgb(18, 18, 18))
-        }
-        root.addView(tvLiveStatus, LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            topMargin = dp(24)
-            bottomMargin = dp(22)
-        })
-
-        overlayPermissionButton = Button(this).apply {
-            text = "Cấp quyền Hiển thị trên ứng dụng khác"
-            setOnClickListener {
-                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
-            }
-        }
-        root.addView(overlayPermissionButton, buttonLayoutParams())
-
-        root.addView(Button(this).apply {
-            text = "Làm mới kết nối ngay"
-            setOnClickListener {
-                val service = HeadUnitService.instance
-                if (service != null) service.forceRestartListener()
-                else ContextCompat.startForegroundService(this@HeadUnitSetupActivity, Intent(this@HeadUnitSetupActivity, HeadUnitService::class.java))
-            }
-        }, buttonLayoutParams())
-
-        root.addView(Button(this).apply {
-            text = "Tắt hoàn toàn dịch vụ"
-            setOnClickListener {
-                stopService(Intent(this@HeadUnitSetupActivity, HeadUnitService::class.java))
-                window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                tvLiveStatus.text = "Đã dừng dịch vụ"
-                refreshOverlayPermissionButton()
-            }
-        }, buttonLayoutParams())
-
-        setContentView(root)
-        refreshOverlayPermissionButton()
+        setupDock()
+        renderConnectionState(HeadUnitService.isConnected)
 
         val permissions = missingRuntimePermissions()
         if (permissions.isNotEmpty()) {
             requestPermissions(permissions, PERMISSION_REQUEST)
         } else {
-            ContextCompat.startForegroundService(this, Intent(this, HeadUnitService::class.java))
+            startHeadUnitService()
         }
     }
 
     override fun onResume() {
         super.onResume()
-        HeadUnitService.onStatusChanged = { tvLiveStatus.text = it }
-        if (::tvLiveStatus.isInitialized) tvLiveStatus.text = HeadUnitService.currentStatus
-        refreshOverlayPermissionButton()
+        HeadUnitService.onConnectionStateChanged = { connected -> renderConnectionState(connected) }
+        renderConnectionState(HeadUnitService.isConnected)
     }
 
     override fun onPause() {
-        HeadUnitService.onStatusChanged = null
+        HeadUnitService.onConnectionStateChanged = null
         super.onPause()
     }
 
-    private fun refreshOverlayPermissionButton() {
-        if (!::overlayPermissionButton.isInitialized) return
-        val permissionMissing = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)
-        overlayPermissionButton.visibility = if (permissionMissing) View.VISIBLE else View.GONE
-        if (permissionMissing) overlayPermissionButton.setBackgroundColor(Color.rgb(255, 202, 40))
+    @Deprecated("Deprecated in Android")
+    override fun onBackPressed() {
+        // Keep the selected home screen in place.
     }
 
-    private fun buttonLayoutParams() = LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-        bottomMargin = dp(10)
+    private fun applyImmersiveMode() {
+        window.decorView.systemUiVisibility = (
+            View.SYSTEM_UI_FLAG_FULLSCREEN or
+                View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            )
     }
 
-    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+    private fun setupDock() {
+        val mapsIcon = findViewById<ImageView>(R.id.ivDockMaps)
+        val tiktokIcon = findViewById<ImageView>(R.id.ivDockTikTok)
+        val youtubeIcon = findViewById<ImageView>(R.id.ivDockYouTube)
+        mapsIcon.setImageDrawable(loadAppIcon("com.google.android.apps.maps") ?: getDrawable(android.R.drawable.ic_menu_mapmode))
+        val tiktokPackage = findInstalledPackage(TIKTOK_PACKAGES)
+        tiktokIcon.setImageDrawable(tiktokPackage?.let(::loadAppIcon) ?: getDrawable(android.R.drawable.ic_media_play))
+        youtubeIcon.setImageDrawable(loadAppIcon("com.google.android.youtube") ?: getDrawable(android.R.drawable.ic_media_play))
+
+        findViewById<View>(R.id.dockMaps).setOnClickListener { launchApp("com.google.android.apps.maps") }
+        findViewById<View>(R.id.dockTikTok).setOnClickListener {
+            if (tiktokPackage != null) launchApp(tiktokPackage) else showAppUnavailable("TikTok")
+        }
+        findViewById<View>(R.id.dockYouTube).setOnClickListener { launchApp("com.google.android.youtube") }
+        findViewById<View>(R.id.dockApps).setOnClickListener { showAppDrawer() }
+    }
+
+    private fun showMaintenanceOptions() {
+        val options = arrayOf(
+            "Cấp quyền Hiển thị trên ứng dụng khác",
+            "Làm mới kết nối ngay",
+            "Mở Cài đặt hệ thống"
+        )
+        AlertDialog.Builder(this)
+            .setTitle("Bảo trì MapsBridge")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION).apply {
+                        data = android.net.Uri.parse("package:$packageName")
+                    })
+                    1 -> HeadUnitService.instance?.forceRestartListener()
+                        ?: startHeadUnitService()
+                    2 -> startActivity(Intent(Settings.ACTION_SETTINGS))
+                }
+            }
+            .show()
+    }
+
+    private fun showAppDrawer() {
+        val query = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val apps = packageManager.queryIntentActivities(query, 0)
+            .map { resolveInfo ->
+                AppEntry(
+                    label = resolveInfo.loadLabel(packageManager)?.toString().orEmpty(),
+                    packageName = resolveInfo.activityInfo.packageName,
+                    resolveInfo = resolveInfo
+                )
+            }
+            .distinctBy { it.packageName }
+            .sortedWith(compareBy<AppEntry> { appPriority(it.packageName) }.thenBy { it.label.lowercase() })
+
+        val list = ListView(this)
+        list.setBackgroundColor(Color.rgb(18, 18, 18))
+        list.adapter = object : BaseAdapter() {
+            override fun getCount(): Int = apps.size
+            override fun getItem(position: Int): AppEntry = apps[position]
+            override fun getItemId(position: Int): Long = position.toLong()
+
+            override fun getView(position: Int, convertView: View?, parent: ViewGroup): View {
+                val row = convertView as? LinearLayout ?: LinearLayout(this@HeadUnitSetupActivity).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = android.view.Gravity.CENTER_VERTICAL
+                    setPadding(dp(16), dp(10), dp(16), dp(10))
+                    addView(ImageView(this@HeadUnitSetupActivity).apply {
+                        id = android.R.id.icon
+                        layoutParams = LinearLayout.LayoutParams(dp(40), dp(40))
+                    })
+                    addView(TextView(this@HeadUnitSetupActivity).apply {
+                        id = android.R.id.text1
+                        textSize = 16f
+                        setTextColor(Color.WHITE)
+                    }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                        marginStart = dp(14)
+                    })
+                }
+                val app = getItem(position)
+                row.findViewById<ImageView>(android.R.id.icon).setImageDrawable(
+                    runCatching { app.resolveInfo.loadIcon(packageManager) }.getOrNull()
+                )
+                row.findViewById<TextView>(android.R.id.text1).text = app.label
+                return row
+            }
+        }
+
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Ứng dụng")
+            .setView(list)
+            .setNegativeButton("Đóng", null)
+            .create()
+        list.setOnItemClickListener { _, _, position, _ ->
+            launchApp(apps[position].packageName)
+            dialog.dismiss()
+        }
+        dialog.show()
+        dialog.window?.setLayout(dp(340), dp(520))
+    }
+
+    private fun appPriority(packageName: String): Int = when {
+        packageName == "com.google.android.apps.maps" -> 0
+        packageName in TIKTOK_PACKAGES -> 1
+        packageName == "com.google.android.youtube" -> 2
+        else -> 3
+    }
+
+    private fun launchApp(packageName: String) {
+        try {
+            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+            if (launchIntent == null) {
+                showAppUnavailable(packageLabel(packageName))
+                return
+            }
+            startActivity(launchIntent)
+        } catch (_: Throwable) {
+            showAppUnavailable(packageLabel(packageName))
+        }
+    }
+
+    private fun loadAppIcon(packageName: String) =
+        runCatching { packageManager.getApplicationIcon(packageName) }.getOrNull()
+
+    private fun findInstalledPackage(candidates: List<String>): String? =
+        candidates.firstOrNull { packageManager.getLaunchIntentForPackage(it) != null }
+
+    private fun packageLabel(packageName: String): String =
+        runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(packageName, 0)).toString() }
+            .getOrDefault(packageName)
+
+    private fun showAppUnavailable(label: String) {
+        Toast.makeText(this, "$label chưa được cài đặt.", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun renderConnectionState(connected: Boolean) {
+        if (!::statusDot.isInitialized) return
+        statusDot.setBackgroundResource(
+            if (connected) R.drawable.launcher_status_connected else R.drawable.launcher_status_disconnected
+        )
+        statusText.text = if (connected) "Đã kết nối" else "Đang chờ..."
+    }
+
+    private fun startHeadUnitService() {
+        ContextCompat.startForegroundService(this, Intent(this, HeadUnitService::class.java))
+    }
 
     private fun missingRuntimePermissions(): Array<String> {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return emptyArray()
@@ -131,10 +240,12 @@ class HeadUnitSetupActivity : Activity() {
         if (requestCode == PERMISSION_REQUEST && missingRuntimePermissions().none {
                 it == Manifest.permission.BLUETOOTH_CONNECT || it == Manifest.permission.BLUETOOTH_SCAN
             }) {
-            ContextCompat.startForegroundService(this, Intent(this, HeadUnitService::class.java))
-            tvLiveStatus.text = HeadUnitService.currentStatus
+            startHeadUnitService()
         } else if (requestCode == PERMISSION_REQUEST) {
-            tvLiveStatus.text = "Bluetooth cần quyền truy cập để kết nối Xiaomi."
+            Toast.makeText(this, "Cần cấp quyền Bluetooth để kết nối Máy Chính.", Toast.LENGTH_LONG).show()
         }
     }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
 }

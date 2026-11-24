@@ -7,11 +7,11 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-feature android:name="android.hardware.bluetooth" android:required="true" />
-    <application android:allowBackup="false" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:label="MapsBridge Xiaomi" android:theme="@style/Theme.AppCompat.NoActionBar">
+    <application android:allowBackup="false" android:icon="@mipmap/ic_launcher" android:roundIcon="@mipmap/ic_launcher_round" android:label="MapsBridge Chính" android:theme="@style/Theme.AppCompat.NoActionBar">
         <activity android:name=".SetupActivity" android:exported="true">
             <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
         </activity>
-        <activity android:name=".ShareReceiverActivity" android:exported="true" android:label="Dẫn đường trên Note8" android:theme="@android:style/Theme.NoDisplay">
+        <activity android:name=".ShareReceiverActivity" android:exported="true" android:label="Dẫn đường trên Máy Phụ" android:theme="@android:style/Theme.NoDisplay">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />

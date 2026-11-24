@@ -29,7 +29,7 @@ class SetupActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setPadding(24, 24, 24, 24)
         }
-        status = TextView(this).apply { text = "Chọn Note8 đã ghép đôi để kết nối"; textSize = 17f }
+        status = TextView(this).apply { text = "Chọn Thiết bị Phụ đã ghép đôi để kết nối"; textSize = 17f }
         root.addView(status, ViewGroup.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT))
         root.addView(Button(this).apply {
             text = "1. Cấp quyền Thông báo"
@@ -62,8 +62,8 @@ class SetupActivity : Activity() {
         try {
             devices = BluetoothAdapter.getDefaultAdapter()?.bondedDevices?.sortedBy { it.name ?: it.address }?.toList().orEmpty()
             deviceList.adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1,
-                devices.map { "${it.name ?: "Thiết bị Bluetooth"}\n${it.address}" })
-            if (devices.isEmpty()) status.text = "Hãy ghép đôi Note8 trong cài đặt Bluetooth trước."
+                devices.map { "${displayDeviceName(it)}\n${it.address}" })
+            if (devices.isEmpty()) status.text = "Hãy ghép đôi Thiết bị Phụ trong cài đặt Bluetooth trước."
         } catch (_: SecurityException) {
             status.text = "Cần cấp quyền Bluetooth để xem thiết bị đã ghép đôi."
         }
@@ -72,7 +72,7 @@ class SetupActivity : Activity() {
     private fun selectDevice(device: BluetoothDevice) {
         try {
             getSharedPreferences("mapsbridge_prefs", MODE_PRIVATE).edit().putString("note8_mac", device.address).apply()
-            status.text = "Đã lưu ${device.name ?: device.address}; đang kết nối…"
+            status.text = "Đã lưu ${displayDeviceName(device)}; đang kết nối…"
             startBridgeService()
         } catch (_: SecurityException) {
             status.text = "Cần cấp quyền Bluetooth để chọn thiết bị."
@@ -82,8 +82,12 @@ class SetupActivity : Activity() {
     private fun startBridgeService() {
         val serviceIntent = Intent(this, BluetoothBridgeService::class.java)
         ContextCompat.startForegroundService(this, serviceIntent)
-        status.text = "Dịch vụ Bluetooth đang chạy; chia sẻ địa điểm qua MapsBridge."
+        status.text = "MapsBridge Chính đang chạy; chia sẻ địa điểm sang Máy Phụ."
     }
+
+    private fun displayDeviceName(device: BluetoothDevice): String =
+        (device.name ?: "Thiết bị Bluetooth")
+            .replace(Regex("Note ?8", RegexOption.IGNORE_CASE), "Thiết bị Phụ")
 
     @Deprecated("Deprecated in Android")
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {

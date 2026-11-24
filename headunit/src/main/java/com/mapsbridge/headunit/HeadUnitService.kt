@@ -43,6 +43,8 @@ class HeadUnitService : Service() {
         val SERVICE_UUID: UUID = UUID.fromString("fa87c0d0-afac-11de-8a39-0800200c9a66")
         @Volatile var currentStatus: String = "Đang khởi động..."
         @Volatile var onStatusChanged: ((String) -> Unit)? = null
+        @Volatile var isConnected: Boolean = false
+        @Volatile var onConnectionStateChanged: ((Boolean) -> Unit)? = null
         @Volatile var instance: HeadUnitService? = null
     }
 
@@ -65,6 +67,7 @@ class HeadUnitService : Service() {
     override fun onCreate() {
         super.onCreate()
         instance = this
+        setConnectionState(false)
         createNotificationChannel()
         try {
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
@@ -107,13 +110,14 @@ class HeadUnitService : Service() {
                 val activeListener = adapter.listenUsingRfcommWithServiceRecord("MapsBridge", SERVICE_UUID)
                 listener = activeListener
                 serverSocket = activeListener
-                updateStatus("Đang chờ nhận dữ liệu từ Xiaomi...")
+                updateStatus("Đang chờ kết nối từ Máy Chính...")
                 val connectedPeer = activeListener.accept()
                 peer = connectedPeer
                 clientSocket = connectedPeer
+                setConnectionState(true)
                 runCatching { activeListener.close() }
                 serverSocket = null
-                updateStatus("Đã kết nối: ${connectedPeer.remoteDevice.name ?: "Xiaomi"}")
+                updateStatus("Đã kết nối từ Máy Chính")
                 lastPacketTime = System.currentTimeMillis()
                 val reader = BufferedReader(InputStreamReader(connectedPeer.inputStream, StandardCharsets.UTF_8))
                 val watchdogRunning = AtomicBoolean(true)
@@ -156,6 +160,7 @@ class HeadUnitService : Service() {
             } finally {
                 runCatching { peer?.close() }
                 if (clientSocket === peer) clientSocket = null
+                if (peer != null) setConnectionState(false)
                 runCatching { listener?.close() }
                 if (serverSocket === listener) serverSocket = null
             }
@@ -390,9 +395,17 @@ class HeadUnitService : Service() {
         }
     }
 
+    private fun setConnectionState(connected: Boolean) {
+        if (isConnected == connected) return
+        isConnected = connected
+        mainHandler.post {
+            try { onConnectionStateChanged?.invoke(connected) } catch (_: Throwable) { }
+        }
+    }
+
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(CHANNEL_ID, "MapsBridge Note8", NotificationManager.IMPORTANCE_LOW)
+            val channel = NotificationChannel(CHANNEL_ID, "MapsBridge Phụ", NotificationManager.IMPORTANCE_LOW)
             (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(channel)
         }
     }
@@ -404,7 +417,7 @@ class HeadUnitService : Service() {
         )
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.stat_sys_data_bluetooth)
-            .setContentTitle("MapsBridge đang chờ chia sẻ")
+            .setContentTitle("MapsBridge Phụ đang chờ chia sẻ")
             .setContentText(text)
             .setContentIntent(openSetup)
             .setOngoing(true)
@@ -424,6 +437,7 @@ class HeadUnitService : Service() {
             if (lock.isHeld) runCatching { lock.release() }
         }
         continuousWakeLock = null
+        setConnectionState(false)
         if (instance === this) instance = null
         updateStatus("Đã dừng dịch vụ")
         super.onDestroy()
