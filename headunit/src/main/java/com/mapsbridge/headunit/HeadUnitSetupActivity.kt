@@ -4,10 +4,13 @@ import android.Manifest
 import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.Typeface
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.Button
@@ -17,47 +20,101 @@ import androidx.core.content.ContextCompat
 
 class HeadUnitSetupActivity : Activity() {
     companion object { private const val PERMISSION_REQUEST = 506 }
-    private lateinit var status: TextView
+
+    private lateinit var tvLiveStatus: TextView
+    private lateinit var overlayPermissionButton: Button
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
         val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(24, 24, 24, 24)
+            setPadding(dp(24), dp(28), dp(24), dp(24))
+            setBackgroundColor(Color.BLACK)
         }
-        status = TextView(this).apply { text = "Cấp quyền rồi bật chế độ chờ nhận từ Xiaomi"; textSize = 17f }
-        root.addView(status, ViewGroup.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT))
-        root.addView(Button(this).apply {
-            text = "1. Cấp quyền Hiển thị trên ứng dụng khác"
+        root.addView(TextView(this).apply {
+            text = "MapsBridge Note8"
+            textSize = 25f
+            setTextColor(Color.WHITE)
+            setTypeface(typeface, Typeface.BOLD)
+        }, ViewGroup.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT))
+
+        tvLiveStatus = TextView(this).apply {
+            text = HeadUnitService.currentStatus
+            textSize = 23f
+            setTextColor(Color.rgb(0, 229, 255))
+            setTypeface(typeface, Typeface.BOLD)
+            setPadding(dp(16), dp(22), dp(16), dp(22))
+            setBackgroundColor(Color.rgb(18, 18, 18))
+        }
+        root.addView(tvLiveStatus, LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            topMargin = dp(24)
+            bottomMargin = dp(22)
+        })
+
+        overlayPermissionButton = Button(this).apply {
+            text = "Cấp quyền Hiển thị trên ứng dụng khác"
             setOnClickListener {
-                val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
-                startActivity(intent)
+                startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
             }
-        })
+        }
+        root.addView(overlayPermissionButton, buttonLayoutParams())
+
         root.addView(Button(this).apply {
-            text = "2. Bật chế độ chờ nhận từ Xiaomi"
-            setOnClickListener { startHeadUnitService() }
-        })
+            text = "Làm mới kết nối ngay"
+            setOnClickListener {
+                val service = HeadUnitService.instance
+                if (service != null) service.forceRestartListener()
+                else ContextCompat.startForegroundService(this@HeadUnitSetupActivity, Intent(this@HeadUnitSetupActivity, HeadUnitService::class.java))
+            }
+        }, buttonLayoutParams())
+
         root.addView(Button(this).apply {
-            text = "Dừng dịch vụ (Cho phép tắt màn hình)"
+            text = "Tắt hoàn toàn dịch vụ"
             setOnClickListener {
                 stopService(Intent(this@HeadUnitSetupActivity, HeadUnitService::class.java))
                 window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-                status.text = "Đã dừng dịch vụ. Màn hình được phép tắt."
+                tvLiveStatus.text = "Đã dừng dịch vụ"
+                refreshOverlayPermissionButton()
             }
-        })
+        }, buttonLayoutParams())
+
         setContentView(root)
+        refreshOverlayPermissionButton()
+
         val permissions = missingRuntimePermissions()
-        if (permissions.isNotEmpty()) requestPermissions(permissions, PERMISSION_REQUEST)
+        if (permissions.isNotEmpty()) {
+            requestPermissions(permissions, PERMISSION_REQUEST)
+        } else {
+            ContextCompat.startForegroundService(this, Intent(this, HeadUnitService::class.java))
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        if (::status.isInitialized && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            status.text = if (Settings.canDrawOverlays(this)) "Đã cấp quyền lớp phủ. Bật dịch vụ để nhận địa điểm và thông báo." else "Hãy cấp quyền lớp phủ để hiện thông báo trên Google Maps."
-        }
+        HeadUnitService.onStatusChanged = { tvLiveStatus.text = it }
+        if (::tvLiveStatus.isInitialized) tvLiveStatus.text = HeadUnitService.currentStatus
+        refreshOverlayPermissionButton()
     }
+
+    override fun onPause() {
+        HeadUnitService.onStatusChanged = null
+        super.onPause()
+    }
+
+    private fun refreshOverlayPermissionButton() {
+        if (!::overlayPermissionButton.isInitialized) return
+        val permissionMissing = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)
+        overlayPermissionButton.visibility = if (permissionMissing) View.VISIBLE else View.GONE
+        if (permissionMissing) overlayPermissionButton.setBackgroundColor(Color.rgb(255, 202, 40))
+    }
+
+    private fun buttonLayoutParams() = LinearLayout.LayoutParams(-1, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+        bottomMargin = dp(10)
+    }
+
+    private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
     private fun missingRuntimePermissions(): Array<String> {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return emptyArray()
@@ -68,19 +125,16 @@ class HeadUnitSetupActivity : Activity() {
         }.toTypedArray()
     }
 
-    private fun startHeadUnitService() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
-            status.text = "Hãy cấp quyền hiển thị lớp phủ trước. Dịch vụ vẫn có thể mở Maps khi nhận địa điểm."
-        }
-        ContextCompat.startForegroundService(this, Intent(this, HeadUnitService::class.java))
-        status.text = "MapsBridge đang chờ kết nối Bluetooth từ Xiaomi."
-    }
-
     @Deprecated("Deprecated in Android")
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
-        if (requestCode == PERMISSION_REQUEST) {
-            status.text = if (grantResults.all { it == PackageManager.PERMISSION_GRANTED }) "Quyền Bluetooth và thông báo đã sẵn sàng." else "Cần quyền Bluetooth và thông báo để duy trì dịch vụ."
+        if (requestCode == PERMISSION_REQUEST && missingRuntimePermissions().none {
+                it == Manifest.permission.BLUETOOTH_CONNECT || it == Manifest.permission.BLUETOOTH_SCAN
+            }) {
+            ContextCompat.startForegroundService(this, Intent(this, HeadUnitService::class.java))
+            tvLiveStatus.text = HeadUnitService.currentStatus
+        } else if (requestCode == PERMISSION_REQUEST) {
+            tvLiveStatus.text = "Bluetooth cần quyền truy cập để kết nối Xiaomi."
         }
     }
 }

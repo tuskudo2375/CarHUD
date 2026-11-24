@@ -13,6 +13,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.IBinder
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.util.Log
 import androidx.core.app.NotificationCompat
@@ -25,6 +27,9 @@ import org.json.JSONObject
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.nio.charset.StandardCharsets
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
 
@@ -34,21 +39,39 @@ class HeadUnitService : Service() {
         private const val CHANNEL_ID = "mapsbridge_headunit"
         private const val NOTIFICATION_ID = 7201
         val SERVICE_UUID: UUID = UUID.fromString("fa87c0d0-afac-11de-8a39-0800200c9a66")
+        @Volatile var currentStatus: String = "Đang khởi động..."
+        @Volatile var onStatusChanged: ((String) -> Unit)? = null
+        @Volatile var instance: HeadUnitService? = null
     }
 
     private val running = AtomicBoolean(false)
+    private val restartRequested = AtomicBoolean(false)
     private val writeLock = Any()
+    private val mainHandler = Handler(Looper.getMainLooper())
     @Volatile private var serverSocket: BluetoothServerSocket? = null
     @Volatile private var clientSocket: BluetoothSocket? = null
     @Volatile private var serverThread: Thread? = null
-    @Volatile private var status = "Đang chờ Xiaomi kết nối"
+    private var continuousWakeLock: PowerManager.WakeLock? = null
     private lateinit var overlayManager: OverlayNotifManager
     private var keepAwakeWindowManager: WindowManager? = null
     private var keepAwakeView: View? = null
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         createNotificationChannel()
+        try {
+            val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+            continuousWakeLock = powerManager.newWakeLock(
+                PowerManager.PARTIAL_WAKE_LOCK,
+                "MapsBridge:ContinuousListen"
+            ).apply {
+                setReferenceCounted(false)
+                acquire()
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Could not acquire continuous listening wake lock", e)
+        }
         overlayManager = OverlayNotifManager(
             this,
             onActionClick = { key, actionIndex, replyText -> sendActionClick(key, actionIndex, replyText) },
@@ -57,7 +80,7 @@ class HeadUnitService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startForeground(NOTIFICATION_ID, buildNotification(status))
+        startForeground(NOTIFICATION_ID, buildNotification(currentStatus))
         attachKeepAwakeOverlay()
         if (running.compareAndSet(false, true)) {
             serverThread = Thread(::serverLoop, "MapsBridge-RFCOMM-Server").also { it.start() }
@@ -67,38 +90,78 @@ class HeadUnitService : Service() {
 
     private fun serverLoop() {
         while (running.get()) {
+            var listener: BluetoothServerSocket? = null
+            var peer: BluetoothSocket? = null
             try {
-                val adapter = BluetoothAdapter.getDefaultAdapter() ?: error("Bluetooth không khả dụng")
-                if (!adapter.isEnabled) {
-                    updateStatus("Hãy bật Bluetooth trên Note8")
-                    Thread.sleep(2_000)
+                val adapter = BluetoothAdapter.getDefaultAdapter()
+                if (adapter?.isEnabled != true) {
+                    updateStatus("Bluetooth đang tắt — đang chờ bật lại...")
+                    Thread.sleep(1_000)
                     continue
                 }
-                updateStatus("Đang chờ Xiaomi kết nối")
-                val listener = adapter.listenUsingRfcommWithServiceRecord("MapsBridge", SERVICE_UUID)
-                serverSocket = listener
-                val peer = listener.accept()
-                clientSocket = peer
-                try { listener.close() } catch (_: Exception) { }
+                val activeListener = adapter.listenUsingRfcommWithServiceRecord("MapsBridge", SERVICE_UUID)
+                listener = activeListener
+                serverSocket = activeListener
+                updateStatus("Đang chờ nhận dữ liệu từ Xiaomi...")
+                val connectedPeer = activeListener.accept()
+                peer = connectedPeer
+                clientSocket = connectedPeer
+                runCatching { activeListener.close() }
                 serverSocket = null
-                updateStatus("Đã kết nối ${peer.remoteDevice.name ?: "thiết bị Bluetooth"}")
-                val reader = BufferedReader(InputStreamReader(peer.inputStream, StandardCharsets.UTF_8))
-                while (running.get() && peer.isConnected) {
+                updateStatus("Đã kết nối: ${connectedPeer.remoteDevice.name ?: "Xiaomi"}")
+                val reader = BufferedReader(InputStreamReader(connectedPeer.inputStream, StandardCharsets.UTF_8))
+                while (running.get() && connectedPeer.isConnected) {
                     val line = reader.readLine() ?: break
+                    val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                    updateStatus("Đã kết nối • Nhận dữ liệu lúc $time")
                     handleMessage(line)
                 }
+            } catch (e: InterruptedException) {
+                Thread.interrupted()
+                if (!running.get()) break
+                Log.i(TAG, "RFCOMM listener restart requested")
             } catch (e: Exception) {
                 if (running.get()) {
                     Log.i(TAG, "RFCOMM disconnected; restarting listener", e)
-                    updateStatus("Mất kết nối; đang mở lại Bluetooth")
                 }
             } finally {
-                try { clientSocket?.close() } catch (_: Exception) { }
-                clientSocket = null
-                try { serverSocket?.close() } catch (_: Exception) { }
-                serverSocket = null
+                runCatching { peer?.close() }
+                if (clientSocket === peer) clientSocket = null
+                runCatching { listener?.close() }
+                if (serverSocket === listener) serverSocket = null
+            }
+            if (running.get()) {
+                if (restartRequested.getAndSet(false)) {
+                    updateStatus("Đang làm mới kết nối Bluetooth...")
+                } else {
+                    updateStatus("Mất kết nối — đang tự động làm mới...")
+                    try {
+                        Thread.sleep(500)
+                    } catch (_: InterruptedException) {
+                        Thread.interrupted()
+                    }
+                }
             }
         }
+    }
+
+    fun forceRestartListener() {
+        if (!running.get()) {
+            if (instance === this) {
+                running.set(true)
+                serverThread = Thread(::serverLoop, "MapsBridge-RFCOMM-Server").also { it.start() }
+            }
+            return
+        }
+        if (serverThread?.isAlive != true) {
+            restartRequested.set(false)
+            serverThread = Thread(::serverLoop, "MapsBridge-RFCOMM-Server").also { it.start() }
+            return
+        }
+        restartRequested.set(true)
+        runCatching { serverSocket?.close() }
+        runCatching { clientSocket?.close() }
+        serverThread?.interrupt()
     }
 
     private fun handleMessage(line: String) {
@@ -276,9 +339,13 @@ class HeadUnitService : Service() {
     }
 
     private fun updateStatus(text: String) {
-        status = text
-        val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
-        manager.notify(NOTIFICATION_ID, buildNotification(text))
+        currentStatus = text
+        mainHandler.post {
+            if (instance !== this) return@post
+            onStatusChanged?.invoke(text)
+            val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
+            manager.notify(NOTIFICATION_ID, buildNotification(text))
+        }
     }
 
     private fun createNotificationChannel() {
@@ -310,6 +377,12 @@ class HeadUnitService : Service() {
         serverThread?.interrupt()
         if (::overlayManager.isInitialized) overlayManager.dismiss()
         detachKeepAwakeOverlay()
+        continuousWakeLock?.let { lock ->
+            if (lock.isHeld) runCatching { lock.release() }
+        }
+        continuousWakeLock = null
+        if (instance === this) instance = null
+        updateStatus("Đã dừng dịch vụ")
         super.onDestroy()
     }
 
