@@ -40,8 +40,8 @@ jobs:
       - name: Prepare APK downloads
         run: |
           mkdir -p output
-          cp companion/build/outputs/apk/debug/companion-debug.apk output/MapsBridge-Xiaomi.apk
-          cp headunit/build/outputs/apk/debug/headunit-debug.apk output/MapsBridge-Note8.apk
+          cp companion/build/outputs/apk/debug/companion-debug.apk output/MapsBridge-Chinh.apk
+          cp headunit/build/outputs/apk/debug/headunit-debug.apk output/MapsBridge-Phu.apk
 
       - name: Report APK file sizes
         run: stat -c '%n %s bytes' output/*.apk

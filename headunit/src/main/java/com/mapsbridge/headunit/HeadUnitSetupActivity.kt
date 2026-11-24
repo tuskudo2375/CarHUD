@@ -64,6 +64,11 @@ class HeadUnitSetupActivity : Activity() {
         renderConnectionState(HeadUnitService.isConnected)
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) applyImmersiveMode()
+    }
+
     override fun onPause() {
         HeadUnitService.onConnectionStateChanged = null
         super.onPause()
@@ -86,10 +91,16 @@ class HeadUnitSetupActivity : Activity() {
         val mapsIcon = findViewById<ImageView>(R.id.ivDockMaps)
         val tiktokIcon = findViewById<ImageView>(R.id.ivDockTikTok)
         val youtubeIcon = findViewById<ImageView>(R.id.ivDockYouTube)
-        mapsIcon.setImageDrawable(loadAppIcon("com.google.android.apps.maps") ?: getDrawable(android.R.drawable.ic_menu_mapmode))
+        val mapsDrawable = loadAppIcon("com.google.android.apps.maps")
+        mapsIcon.setImageDrawable(mapsDrawable ?: getDrawable(android.R.drawable.ic_menu_mapmode))
+        if (mapsDrawable == null) mapsIcon.setColorFilter(Color.WHITE)
         val tiktokPackage = findInstalledPackage(TIKTOK_PACKAGES)
-        tiktokIcon.setImageDrawable(tiktokPackage?.let(::loadAppIcon) ?: getDrawable(android.R.drawable.ic_media_play))
-        youtubeIcon.setImageDrawable(loadAppIcon("com.google.android.youtube") ?: getDrawable(android.R.drawable.ic_media_play))
+        val tiktokDrawable = tiktokPackage?.let(::loadAppIcon)
+        tiktokIcon.setImageDrawable(tiktokDrawable ?: getDrawable(android.R.drawable.ic_media_play))
+        if (tiktokDrawable == null) tiktokIcon.setColorFilter(Color.WHITE)
+        val youtubeDrawable = loadAppIcon("com.google.android.youtube")
+        youtubeIcon.setImageDrawable(youtubeDrawable ?: getDrawable(android.R.drawable.ic_media_play))
+        if (youtubeDrawable == null) youtubeIcon.setColorFilter(Color.WHITE)
 
         findViewById<View>(R.id.dockMaps).setOnClickListener { launchApp("com.google.android.apps.maps") }
         findViewById<View>(R.id.dockTikTok).setOnClickListener {
