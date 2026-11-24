@@ -29,47 +29,53 @@ class CompanionNotifService : NotificationListenerService() {
     }
 
     override fun onNotificationPosted(sbn: StatusBarNotification) {
-        if (sbn.packageName == packageName ||
-            sbn.packageName == "com.google.android.apps.maps" ||
-            sbn.isOngoing ||
-            (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) return
+        try {
+            if (sbn.packageName == packageName ||
+                sbn.packageName == "com.google.android.apps.maps" ||
+                sbn.isOngoing ||
+                (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) return
 
-        val appInfo = try {
-            packageManager.getApplicationInfo(sbn.packageName, 0)
-        } catch (_: PackageManager.NameNotFoundException) {
-            return
+            val appInfo = try {
+                packageManager.getApplicationInfo(sbn.packageName, 0)
+            } catch (_: Throwable) {
+                return
+            }
+            if ((appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0) return
+            val appName = packageManager.getApplicationLabel(appInfo).toString()
+
+            val extras = sbn.notification.extras
+            val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
+            val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty()
+            if (title.isBlank() && text.isBlank()) return
+
+            val actions = sbn.notification.actions?.toList()?.take(3) ?: emptyList()
+            if (actions.isEmpty()) actionMap.remove(sbn.key) else actionMap[sbn.key] = actions
+            val actionArray = JSONArray()
+            actions.forEachIndexed { index, action ->
+                actionArray.put(JSONObject()
+                    .put("index", index)
+                    .put("title", action.title?.toString().orEmpty())
+                    .put("isReply", !action.remoteInputs.isNullOrEmpty()))
+            }
+            val json = JSONObject()
+                .put("type", "NOTIF")
+                .put("key", sbn.key)
+                .put("appName", appName)
+                .put("title", title)
+                .put("text", text)
+                .put("actions", actionArray)
+                .toString()
+            BluetoothBridgeService.instance?.sendJson(json)
+        } catch (_: Throwable) {
+            // Ignore malformed or transient notification data instead of crashing the listener.
         }
-        if ((appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0) return
-        val appName = packageManager.getApplicationLabel(appInfo).toString()
-
-        val extras = sbn.notification.extras
-        val title = extras.getCharSequence(Notification.EXTRA_TITLE)?.toString().orEmpty()
-        val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty()
-        if (title.isBlank() && text.isBlank()) return
-
-        val actions = sbn.notification.actions?.toList()?.take(3) ?: emptyList()
-        if (actions.isEmpty()) actionMap.remove(sbn.key) else actionMap[sbn.key] = actions
-        val actionArray = JSONArray()
-        actions.forEachIndexed { index, action ->
-            actionArray.put(JSONObject()
-                .put("index", index)
-                .put("title", action.title?.toString().orEmpty())
-                .put("isReply", !action.remoteInputs.isNullOrEmpty()))
-        }
-        val json = JSONObject()
-            .put("type", "NOTIF")
-            .put("key", sbn.key)
-            .put("appName", appName)
-            .put("title", title)
-            .put("text", text)
-            .put("actions", actionArray)
-            .toString()
-        BluetoothBridgeService.instance?.sendJson(json)
     }
 
     override fun onNotificationRemoved(sbn: StatusBarNotification) {
-        actionMap.remove(sbn.key)
-        super.onNotificationRemoved(sbn)
+        try {
+            actionMap.remove(sbn.key)
+            super.onNotificationRemoved(sbn)
+        } catch (_: Throwable) { }
     }
 
     fun executeAction(notifKey: String, actionIndex: Int, replyMessage: String?) {
@@ -85,7 +91,7 @@ class CompanionNotifService : NotificationListenerService() {
             } else {
                 action.actionIntent.send()
             }
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             // The notification may have disappeared before the action was selected.
         } finally {
             actionMap.remove(notifKey)

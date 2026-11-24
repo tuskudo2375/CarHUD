@@ -9,6 +9,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.view.Gravity
+import android.view.ContextThemeWrapper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.WindowManager
@@ -32,61 +33,65 @@ class OverlayNotifManager(
     @SuppressLint("InflateParams")
     fun show(key: String, appName: String, title: String, text: String, actions: JSONArray) {
         handler.post {
-            if (!Settings.canDrawOverlays(appContext)) return@post
-            dismissOnMain()
-            val view = LayoutInflater.from(appContext).inflate(R.layout.overlay_notification, null)
-            currentKey = key
-            view.findViewById<TextView>(R.id.tvAppName).text = appName.ifBlank { "Thông báo" }
-            view.findViewById<TextView>(R.id.tvOverlaySender).text = title.ifBlank { "Thông báo" }
-            view.findViewById<TextView>(R.id.tvOverlayMessage).text = text
-            val actionContainer = view.findViewById<LinearLayout>(R.id.layoutActions)
-            actionContainer.removeAllViews()
-            view.findViewById<Button>(R.id.btnOverlayClose).setOnClickListener { dismiss() }
-            view.findViewById<Button>(R.id.btnOverlayBackToMaps).setOnClickListener {
-                onReturnToMaps()
-                dismiss()
-            }
+            try {
+                if (!Settings.canDrawOverlays(appContext)) return@post
+                dismissOnMain()
+                val themedContext = ContextThemeWrapper(
+                    appContext,
+                    androidx.appcompat.R.style.Theme_AppCompat_NoActionBar
+                )
+                val view = LayoutInflater.from(themedContext).inflate(R.layout.overlay_notification, null)
+                currentKey = key
+                view.findViewById<TextView>(R.id.tvAppName).text = appName.ifBlank { "Thông báo" }
+                view.findViewById<TextView>(R.id.tvOverlaySender).text = title.ifBlank { "Thông báo" }
+                view.findViewById<TextView>(R.id.tvOverlayMessage).text = text
+                val actionContainer = view.findViewById<LinearLayout>(R.id.layoutActions)
+                actionContainer.removeAllViews()
+                view.findViewById<Button>(R.id.btnOverlayClose).setOnClickListener { dismiss() }
+                view.findViewById<Button>(R.id.btnOverlayBackToMaps).setOnClickListener {
+                    try { onReturnToMaps() } catch (_: Throwable) { }
+                    dismiss()
+                }
 
-            var replyActionsAdded = false
-            for (position in 0 until actions.length()) {
-                val action = actions.optJSONObject(position) ?: continue
-                val actionIndex = action.optInt("index", position)
-                if (action.optBoolean("isReply")) {
-                    if (!replyActionsAdded) {
-                        replyActionsAdded = true
-                        actionContainer.addView(createActionButton("Đang lái xe, lát gọi lại!", 0xFF1E88E5.toInt()) {
-                            performAction(key, actionIndex, "Đang lái xe, lát gọi lại!")
-                        })
-                        actionContainer.addView(createActionButton("OK, đang qua liền!", 0xFF43A047.toInt()) {
-                            performAction(key, actionIndex, "OK, đang qua liền!")
-                        })
-                    }
-                } else {
-                    val actionTitle = action.optString("title").trim()
-                    if (actionTitle.isNotEmpty()) {
-                        actionContainer.addView(createActionButton(actionTitle, 0xFF165A6B.toInt()) {
-                            performAction(key, actionIndex, null)
-                        })
+                var replyActionsAdded = false
+                for (position in 0 until actions.length()) {
+                    val action = actions.optJSONObject(position) ?: continue
+                    val actionIndex = action.optInt("index", position)
+                    if (action.optBoolean("isReply")) {
+                        if (!replyActionsAdded) {
+                            replyActionsAdded = true
+                            actionContainer.addView(createActionButton("Đang lái xe, lát gọi lại!", 0xFF1E88E5.toInt()) {
+                                performAction(key, actionIndex, "Đang lái xe, lát gọi lại!")
+                            })
+                            actionContainer.addView(createActionButton("OK, đang qua liền!", 0xFF43A047.toInt()) {
+                                performAction(key, actionIndex, "OK, đang qua liền!")
+                            })
+                        }
+                    } else {
+                        val actionTitle = action.optString("title").trim()
+                        if (actionTitle.isNotEmpty()) {
+                            actionContainer.addView(createActionButton(actionTitle, 0xFF165A6B.toInt()) {
+                                performAction(key, actionIndex, null)
+                            })
+                        }
                     }
                 }
-            }
-            val params = WindowManager.LayoutParams(
-                dp(360), WindowManager.LayoutParams.WRAP_CONTENT,
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
-                PixelFormat.TRANSLUCENT
-            ).apply {
-                gravity = Gravity.TOP or Gravity.END
-                x = dp(16)
-                y = dp(36)
-            }
-            try {
+                val params = WindowManager.LayoutParams(
+                    dp(360), WindowManager.LayoutParams.WRAP_CONTENT,
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                        WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                        WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                    PixelFormat.TRANSLUCENT
+                ).apply {
+                    gravity = Gravity.TOP or Gravity.END
+                    x = dp(16)
+                    y = dp(36)
+                }
                 windowManager.addView(view, params)
                 overlay = view
                 dismissAction = Runnable { dismissOnMain() }.also { handler.postDelayed(it, 10_000) }
-            } catch (_: Exception) {
+            } catch (_: Throwable) {
                 overlay = null
                 currentKey = null
             }
@@ -95,7 +100,7 @@ class OverlayNotifManager(
 
     private fun performAction(key: String, actionIndex: Int, replyText: String?) {
         if (currentKey != key) return
-        onActionClick(key, actionIndex, replyText)
+        try { onActionClick(key, actionIndex, replyText) } catch (_: Throwable) { }
         dismiss()
     }
 
@@ -117,7 +122,11 @@ class OverlayNotifManager(
     private fun dismissOnMain() {
         dismissAction?.let(handler::removeCallbacks)
         dismissAction = null
-        overlay?.let { view -> runCatching { windowManager.removeView(view) } }
+        overlay?.let { view ->
+            try {
+                if (view.isAttachedToWindow) windowManager.removeViewImmediate(view)
+            } catch (_: Exception) { }
+        }
         overlay = null
         currentKey = null
     }

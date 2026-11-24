@@ -32,6 +32,8 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 
 class HeadUnitService : Service() {
     companion object {
@@ -48,9 +50,13 @@ class HeadUnitService : Service() {
     private val restartRequested = AtomicBoolean(false)
     private val writeLock = Any()
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val navResolverExecutor: ExecutorService = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "MapsBridge-Resolve-URL")
+    }
     @Volatile private var serverSocket: BluetoothServerSocket? = null
     @Volatile private var clientSocket: BluetoothSocket? = null
     @Volatile private var serverThread: Thread? = null
+    @Volatile private var lastPacketTime = 0L
     private var continuousWakeLock: PowerManager.WakeLock? = null
     private lateinit var overlayManager: OverlayNotifManager
     private var keepAwakeWindowManager: WindowManager? = null
@@ -109,12 +115,36 @@ class HeadUnitService : Service() {
                 runCatching { activeListener.close() }
                 serverSocket = null
                 updateStatus("Đã kết nối: ${connectedPeer.remoteDevice.name ?: "Xiaomi"}")
+                lastPacketTime = System.currentTimeMillis()
                 val reader = BufferedReader(InputStreamReader(connectedPeer.inputStream, StandardCharsets.UTF_8))
-                while (running.get() && connectedPeer.isConnected) {
-                    val line = reader.readLine() ?: break
-                    val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-                    updateStatus("Đã kết nối • Nhận dữ liệu lúc $time")
-                    handleMessage(line)
+                val watchdogRunning = AtomicBoolean(true)
+                val watchdog = Thread({
+                    while (running.get() && watchdogRunning.get() && connectedPeer.isConnected) {
+                        try {
+                            Thread.sleep(3_000)
+                        } catch (_: InterruptedException) {
+                            break
+                        }
+                        if (running.get() && watchdogRunning.get() &&
+                            System.currentTimeMillis() - lastPacketTime > 12_000L) {
+                            runCatching { connectedPeer.close() }
+                            break
+                        }
+                    }
+                }, "MapsBridge-Heartbeat-Watchdog").also { it.start() }
+                try {
+                    while (running.get() && connectedPeer.isConnected) {
+                        val line = reader.readLine() ?: break
+                        lastPacketTime = System.currentTimeMillis()
+                        if (!isPingPacket(line)) {
+                            val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                            updateStatus("Đã kết nối • Nhận dữ liệu lúc $time")
+                            handleMessage(line)
+                        }
+                    }
+                } finally {
+                    watchdogRunning.set(false)
+                    watchdog.interrupt()
                 }
             } catch (e: InterruptedException) {
                 Thread.interrupted()
@@ -165,46 +195,58 @@ class HeadUnitService : Service() {
     }
 
     private fun handleMessage(line: String) {
-        val message = try { JSONObject(line) } catch (e: Exception) {
-            Log.w(TAG, "Ignoring malformed message", e)
-            return
-        }
-        when (message.optString("type")) {
-            "NAV_SHARE" -> {
-                wakeScreen()
-                val payload = message.optString("payload")
-                Thread({
-                    val resolved = UrlResolver.extractDestination(payload)
-                    val query = resolved.query
-                    val fallbackUrl = resolved.fallbackUrl
-                    when {
-                        !query.isNullOrBlank() -> launchNavLauncher(
-                            NavLauncherActivity.EXTRA_NAV_URI,
-                            "google.navigation:q=${Uri.encode(query)}&mode=l",
-                            query
-                        )
-                        !fallbackUrl.isNullOrBlank() -> launchNavLauncher(
-                            NavLauncherActivity.EXTRA_FALLBACK_URL,
-                            fallbackUrl,
-                            null
-                        )
-                        else -> updateStatus("Không nhận diện được địa điểm")
+        try {
+            val message = JSONObject(line)
+            when (message.optString("type")) {
+                "PING" -> Unit
+                "NAV_SHARE" -> {
+                    wakeScreen()
+                    val payload = message.optString("payload")
+                    navResolverExecutor.execute {
+                        try {
+                            val resolved = UrlResolver.extractDestination(payload)
+                            val query = resolved.query
+                            val fallbackUrl = resolved.fallbackUrl
+                            when {
+                                !query.isNullOrBlank() -> launchNavLauncher(
+                                    NavLauncherActivity.EXTRA_NAV_URI,
+                                    "google.navigation:q=${Uri.encode(query)}&mode=l",
+                                    query
+                                )
+                                !fallbackUrl.isNullOrBlank() -> launchNavLauncher(
+                                    NavLauncherActivity.EXTRA_FALLBACK_URL,
+                                    fallbackUrl,
+                                    null
+                                )
+                                else -> updateStatus("Không nhận diện được địa điểm")
+                            }
+                        } catch (e: Throwable) {
+                            updateStatus("Lỗi gói tin: ${e.javaClass.simpleName}")
+                        }
                     }
-                }, "MapsBridge-Resolve-URL").start()
-            }
-            "NOTIF" -> {
-                val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-                if (powerManager.isInteractive) {
-                    overlayManager.show(
-                        key = message.optString("key"),
-                        appName = message.optString("appName"),
-                        title = message.optString("title"),
-                        text = message.optString("text"),
-                        actions = message.optJSONArray("actions") ?: org.json.JSONArray()
-                    )
+                }
+                "NOTIF" -> {
+                    val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
+                    if (powerManager.isInteractive) {
+                        overlayManager.show(
+                            key = message.optString("key"),
+                            appName = message.optString("appName"),
+                            title = message.optString("title"),
+                            text = message.optString("text"),
+                            actions = message.optJSONArray("actions") ?: org.json.JSONArray()
+                        )
+                    }
                 }
             }
+        } catch (e: Throwable) {
+            updateStatus("Lỗi gói tin: ${e.javaClass.simpleName}")
         }
+    }
+
+    private fun isPingPacket(line: String): Boolean = try {
+        JSONObject(line).optString("type") == "PING"
+    } catch (_: Throwable) {
+        false
     }
 
     private fun launchNavLauncher(extraName: String, extraValue: String, queryForStatus: String?) {
@@ -332,8 +374,9 @@ class HeadUnitService : Service() {
                 peer.outputStream.write((json + "\n").toByteArray(StandardCharsets.UTF_8))
                 peer.outputStream.flush()
             }
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
             Log.w(TAG, "Could not send quick reply", e)
+            runCatching { peer.close() }
             updateStatus("Không gửi được trả lời Bluetooth")
         }
     }
@@ -372,6 +415,7 @@ class HeadUnitService : Service() {
 
     override fun onDestroy() {
         running.set(false)
+        navResolverExecutor.shutdownNow()
         try { serverSocket?.close() } catch (_: Exception) { }
         try { clientSocket?.close() } catch (_: Exception) { }
         serverThread?.interrupt()

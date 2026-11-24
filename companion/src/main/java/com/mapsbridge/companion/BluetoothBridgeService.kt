@@ -15,7 +15,9 @@ import android.util.Log
 import androidx.core.app.NotificationCompat
 import org.json.JSONObject
 import java.io.BufferedReader
+import java.io.IOException
 import java.io.InputStreamReader
+import java.io.OutputStreamWriter
 import java.nio.charset.StandardCharsets
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
@@ -46,6 +48,7 @@ class BluetoothBridgeService : Service() {
     }
 
     private val running = AtomicBoolean(false)
+    private val reconnectImmediately = AtomicBoolean(false)
     private val writeLock = Any()
     @Volatile private var socket: BluetoothSocket? = null
     @Volatile private var worker: Thread? = null
@@ -73,13 +76,23 @@ class BluetoothBridgeService : Service() {
             }
             return
         }
-        try {
-            synchronized(writeLock) {
-                current.outputStream.write((json + "\n").toByteArray(StandardCharsets.UTF_8))
-                current.outputStream.flush()
+        synchronized(writeLock) {
+            try {
+                val writer = OutputStreamWriter(current.outputStream, StandardCharsets.UTF_8)
+                writer.write(json)
+                writer.write("\n")
+                writer.flush()
+            } catch (e: IOException) {
+                Log.w(TAG, "Bluetooth write failed; closing socket to restart connection", e)
+                reconnectImmediately.set(true)
+                try { current.close() } catch (_: Throwable) { }
+                if (socket === current) socket = null
+            } catch (e: Throwable) {
+                Log.e(TAG, "Unexpected Bluetooth write failure", e)
+                reconnectImmediately.set(true)
+                try { current.close() } catch (_: Throwable) { }
+                if (socket === current) socket = null
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "Send failed", e)
         }
     }
 
@@ -103,38 +116,57 @@ class BluetoothBridgeService : Service() {
             var activeSocket: BluetoothSocket? = null
             try {
                 val adapter = BluetoothAdapter.getDefaultAdapter() ?: error("Bluetooth không khả dụng")
-                activeSocket = adapter.getRemoteDevice(mac).createRfcommSocketToServiceRecord(SERVICE_UUID)
-                socket = activeSocket
+                val connectedSocket = adapter.getRemoteDevice(mac).createRfcommSocketToServiceRecord(SERVICE_UUID)
+                activeSocket = connectedSocket
+                socket = connectedSocket
                 updateStatus("Đang kết nối Note8…")
-                activeSocket.connect()
+                connectedSocket.connect()
                 updateStatus("Đã kết nối Note8")
                 sendPendingNavigation()
-                val reader = BufferedReader(InputStreamReader(activeSocket.inputStream, StandardCharsets.UTF_8))
-                while (running.get() && activeSocket.isConnected) {
-                    val line = reader.readLine() ?: break
-                    try {
-                        val message = JSONObject(line)
-                        if (message.optString("type") == "ACTION_CLICK") {
-                            CompanionNotifService.instance?.executeAction(
-                                notifKey = message.optString("key"),
-                                actionIndex = message.optInt("actionIndex", -1),
-                                replyMessage = message.optString("message").takeIf { it.isNotEmpty() }
-                            )
+                val reader = BufferedReader(InputStreamReader(connectedSocket.inputStream, StandardCharsets.UTF_8))
+                val heartbeatRunning = AtomicBoolean(true)
+                val heartbeat = Thread({
+                    while (running.get() && heartbeatRunning.get() && connectedSocket.isConnected) {
+                        try {
+                            Thread.sleep(5_000)
+                        } catch (_: InterruptedException) {
+                            break
                         }
-                    } catch (e: Exception) {
-                        Log.w(TAG, "Ignoring invalid Bluetooth message", e)
+                        if (running.get() && heartbeatRunning.get() && connectedSocket.isConnected) {
+                            sendJson("{\"type\":\"PING\"}")
+                        }
                     }
+                }, "MapsBridge-Heartbeat").also { it.start() }
+                try {
+                    while (running.get() && connectedSocket.isConnected) {
+                        val line = reader.readLine() ?: break
+                        try {
+                            val message = JSONObject(line)
+                            if (message.optString("type") == "ACTION_CLICK") {
+                                CompanionNotifService.instance?.executeAction(
+                                    notifKey = message.optString("key"),
+                                    actionIndex = message.optInt("actionIndex", -1),
+                                    replyMessage = message.optString("message").takeIf { it.isNotEmpty() }
+                                )
+                            }
+                        } catch (e: Throwable) {
+                            Log.w(TAG, "Ignoring invalid Bluetooth message", e)
+                        }
+                    }
+                } finally {
+                    heartbeatRunning.set(false)
+                    heartbeat.interrupt()
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 if (running.get()) {
                     Log.i(TAG, "Bluetooth disconnected; retrying", e)
                     updateStatus("Mất kết nối, đang thử lại…")
                 }
             } finally {
-                try { activeSocket?.close() } catch (_: Exception) { }
+                try { activeSocket?.close() } catch (_: Throwable) { }
                 if (socket === activeSocket) socket = null
             }
-            sleepBeforeRetry()
+            if (!reconnectImmediately.getAndSet(false)) sleepBeforeRetry()
         }
     }
 
