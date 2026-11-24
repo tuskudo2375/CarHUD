@@ -2,6 +2,8 @@ package com.mapsbridge.headunit
 
 import android.app.KeyguardManager
 import android.app.Activity
+import android.app.ActivityManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -16,6 +18,9 @@ class NavLauncherActivity : Activity() {
         const val EXTRA_FALLBACK_URL = "com.mapsbridge.headunit.EXTRA_FALLBACK_URL"
         private const val MAPS_PACKAGE = "com.google.android.apps.maps"
     }
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var pendingLaunch: Runnable? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,25 +39,42 @@ class NavLauncherActivity : Activity() {
         val keyguardManager = getSystemService(KEYGUARD_SERVICE) as KeyguardManager
         keyguardManager.requestDismissKeyguard(this, null)
 
-        val navUri = intent.getStringExtra(EXTRA_NAV_URI).orEmpty()
-        val fallbackUrl = intent.getStringExtra(EXTRA_FALLBACK_URL).orEmpty()
-        Handler(Looper.getMainLooper()).postDelayed({
+        launchMapsFromIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        launchMapsFromIntent(intent)
+    }
+
+    private fun launchMapsFromIntent(sourceIntent: Intent) {
+        pendingLaunch?.let(mainHandler::removeCallbacks)
+        val navUri = sourceIntent.getStringExtra(EXTRA_NAV_URI).orEmpty()
+        val fallbackUrl = sourceIntent.getStringExtra(EXTRA_FALLBACK_URL).orEmpty()
+        runCatching {
+            val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+            activityManager.killBackgroundProcesses(MAPS_PACKAGE)
+        }
+
+        val launch = Runnable {
             try {
                 when {
-                    navUri.isNotBlank() -> startActivity(
-                        Intent(Intent.ACTION_VIEW, Uri.parse(navUri))
-                            .setPackage(MAPS_PACKAGE)
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    )
-                    fallbackUrl.isNotBlank() -> startActivity(
-                        Intent(Intent.ACTION_VIEW, Uri.parse(fallbackUrl))
-                            .setPackage(MAPS_PACKAGE)
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    )
+                    navUri.isNotBlank() -> startActivity(createMapsIntent(navUri))
+                    fallbackUrl.isNotBlank() -> startActivity(createMapsIntent(fallbackUrl))
                 }
             } finally {
+                pendingLaunch = null
                 finish()
             }
-        }, 300L)
+        }
+        pendingLaunch = launch
+        mainHandler.postDelayed(launch, 350L)
     }
+
+    private fun createMapsIntent(uri: String): Intent =
+        Intent(Intent.ACTION_VIEW, Uri.parse(uri)).apply {
+            setPackage(MAPS_PACKAGE)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        }
 }
