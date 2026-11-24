@@ -1,14 +1,15 @@
 package com.mapsbridge.companion
 
 import android.app.Notification
-import android.app.RemoteInput
-import android.content.Intent
 import android.content.pm.ApplicationInfo
-import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
 import java.util.concurrent.ConcurrentHashMap
 
 class CompanionNotifService : NotificationListenerService() {
@@ -17,6 +18,8 @@ class CompanionNotifService : NotificationListenerService() {
             private set
         val actionMap = ConcurrentHashMap<String, List<Notification.Action>>()
     }
+
+    private val iconCache = ConcurrentHashMap<String, String>()
 
     override fun onListenerConnected() {
         super.onListenerConnected()
@@ -35,11 +38,7 @@ class CompanionNotifService : NotificationListenerService() {
                 sbn.isOngoing ||
                 (sbn.notification.flags and Notification.FLAG_GROUP_SUMMARY) != 0) return
 
-            val appInfo = try {
-                packageManager.getApplicationInfo(sbn.packageName, 0)
-            } catch (_: Throwable) {
-                return
-            }
+            val appInfo = packageManager.getApplicationInfo(sbn.packageName, 0)
             if ((appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0) return
             val appName = packageManager.getApplicationLabel(appInfo).toString()
 
@@ -48,19 +47,26 @@ class CompanionNotifService : NotificationListenerService() {
             val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString().orEmpty()
             if (title.isBlank() && text.isBlank()) return
 
-            val actions = sbn.notification.actions?.toList()?.take(3) ?: emptyList()
-            if (actions.isEmpty()) actionMap.remove(sbn.key) else actionMap[sbn.key] = actions
+            val actions = sbn.notification.actions
+                ?.filter { action ->
+                    action.actionIntent != null &&
+                        action.remoteInputs.isNullOrEmpty() &&
+                        !action.title.isNullOrBlank()
+                }
+                ?.take(3)
+                ?: emptyList()
+            actionMap[sbn.key] = actions
             val actionArray = JSONArray()
             actions.forEachIndexed { index, action ->
                 actionArray.put(JSONObject()
                     .put("index", index)
-                    .put("title", action.title?.toString().orEmpty())
-                    .put("isReply", !action.remoteInputs.isNullOrEmpty()))
+                    .put("title", action.title.toString()))
             }
             val json = JSONObject()
                 .put("type", "NOTIF")
                 .put("key", sbn.key)
                 .put("appName", appName)
+                .put("icon", getAppIconBase64(sbn.packageName))
                 .put("title", title)
                 .put("text", text)
                 .put("actions", actionArray)
@@ -78,23 +84,36 @@ class CompanionNotifService : NotificationListenerService() {
         } catch (_: Throwable) { }
     }
 
-    fun executeAction(notifKey: String, actionIndex: Int, replyMessage: String?) {
+    fun executeAction(notifKey: String, actionIndex: Int) {
         val action = actionMap[notifKey]?.getOrNull(actionIndex) ?: return
         try {
-            val inputs = action.remoteInputs.orEmpty()
-            if (inputs.isNotEmpty() && !replyMessage.isNullOrEmpty()) {
-                val input = Intent()
-                RemoteInput.addResultsToIntent(inputs, input, android.os.Bundle().apply {
-                    putCharSequence(inputs.first().resultKey, replyMessage)
-                })
-                action.actionIntent.send(this, 0, input)
-            } else {
-                action.actionIntent.send()
-            }
+            action.actionIntent.send()
         } catch (_: Throwable) {
             // The notification may have disappeared before the action was selected.
         } finally {
             actionMap.remove(notifKey)
+        }
+    }
+
+    private fun getAppIconBase64(pkg: String): String {
+        iconCache[pkg]?.let { return it }
+        var bitmap: Bitmap? = null
+        return try {
+            val drawable = packageManager.getApplicationIcon(pkg)
+            val renderedBitmap = Bitmap.createBitmap(48, 48, Bitmap.Config.ARGB_8888)
+            bitmap = renderedBitmap
+            val canvas = Canvas(renderedBitmap)
+            drawable.setBounds(0, 0, 48, 48)
+            drawable.draw(canvas)
+            val bytes = ByteArrayOutputStream().use { output ->
+                renderedBitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+                output.toByteArray()
+            }
+            Base64.encodeToString(bytes, Base64.NO_WRAP).also { iconCache[pkg] = it }
+        } catch (_: Throwable) {
+            ""
+        } finally {
+            bitmap?.recycle()
         }
     }
 }

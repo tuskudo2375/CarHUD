@@ -80,8 +80,7 @@ class HeadUnitService : Service() {
         }
         overlayManager = OverlayNotifManager(
             this,
-            onActionClick = { key, actionIndex, replyText -> sendActionClick(key, actionIndex, replyText) },
-            onReturnToMaps = ::openMapsHome
+            onActionClick = { key, actionIndex -> sendActionClick(key, actionIndex) }
         )
     }
 
@@ -231,6 +230,7 @@ class HeadUnitService : Service() {
                         overlayManager.show(
                             key = message.optString("key"),
                             appName = message.optString("appName"),
+                            iconBase64 = message.optString("icon"),
                             title = message.optString("title"),
                             text = message.optString("text"),
                             actions = message.optJSONArray("actions") ?: org.json.JSONArray()
@@ -360,7 +360,7 @@ class HeadUnitService : Service() {
         }
     }
 
-    private fun sendActionClick(key: String, actionIndex: Int, replyText: String?) {
+    private fun sendActionClick(key: String, actionIndex: Int) {
         val peer = clientSocket ?: return
         if (!peer.isConnected) return
         try {
@@ -368,7 +368,6 @@ class HeadUnitService : Service() {
                 .put("type", "ACTION_CLICK")
                 .put("key", key)
                 .put("actionIndex", actionIndex)
-                .put("message", replyText ?: "")
                 .toString()
             synchronized(writeLock) {
                 peer.outputStream.write((json + "\n").toByteArray(StandardCharsets.UTF_8))

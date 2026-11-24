@@ -145,8 +145,7 @@ class BluetoothBridgeService : Service() {
                             if (message.optString("type") == "ACTION_CLICK") {
                                 CompanionNotifService.instance?.executeAction(
                                     notifKey = message.optString("key"),
-                                    actionIndex = message.optInt("actionIndex", -1),
-                                    replyMessage = message.optString("message").takeIf { it.isNotEmpty() }
+                                    actionIndex = message.optInt("actionIndex", -1)
                                 )
                             }
                         } catch (e: Throwable) {

@@ -1,21 +1,80 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/overlayCard"
-    android:layout_width="match_parent" android:layout_height="wrap_content"
-    android:orientation="vertical" android:padding="16dp"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:padding="10dp"
     android:background="@drawable/overlay_notification_card">
-    <TextView android:id="@+id/tvAppName" android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginBottom="6dp"
-        android:paddingStart="8dp" android:paddingEnd="8dp" android:paddingTop="3dp" android:paddingBottom="3dp"
-        android:background="#263F5362" android:text="App" android:textColor="#80DEEA" android:textSize="12sp" />
-    <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:gravity="center_vertical" android:orientation="horizontal">
-        <TextView android:id="@+id/tvOverlaySender" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1"
-            android:text="Thông báo" android:textColor="#FFCA28" android:textSize="20sp" android:textStyle="bold" />
-        <Button android:id="@+id/btnOverlayClose" android:layout_width="48dp" android:layout_height="48dp" android:minWidth="0dp" android:minHeight="0dp"
-            android:text="×" android:textColor="#FFFFFF" android:textSize="24sp" android:backgroundTint="#303030" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:id="@+id/ivAppIcon"
+            android:layout_width="20dp"
+            android:layout_height="20dp"
+            android:layout_marginEnd="6dp"
+            android:contentDescription="@null"
+            android:scaleType="centerCrop"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/tvAppName"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:maxLines="1"
+            android:ellipsize="end"
+            android:text="App"
+            android:textColor="#B0BEC5"
+            android:textSize="12sp" />
+
+        <Button
+            android:id="@+id/btnClose"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:padding="4dp"
+            android:backgroundTint="#001A1A1A"
+            android:text="✕"
+            android:textAllCaps="false"
+            android:textColor="#9E9E9E"
+            android:textSize="14sp" />
     </LinearLayout>
-    <TextView android:id="@+id/tvOverlayMessage" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="6dp"
-        android:textColor="#FFFFFF" android:textSize="18sp" />
-    <LinearLayout android:id="@+id/layoutActions" android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="vertical" />
-    <Button android:id="@+id/btnOverlayBackToMaps" android:layout_width="match_parent" android:layout_height="44dp" android:layout_marginTop="6dp"
-        android:text="Về Maps" android:textColor="#FFFFFF" android:backgroundTint="#263238" />
+
+    <TextView
+        android:id="@+id/tvNotifSender"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:text="Thông báo"
+        android:textColor="#FFFFFF"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/tvNotifMessage"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="2dp"
+        android:ellipsize="end"
+        android:maxLines="2"
+        android:textColor="#E0E0E0"
+        android:textSize="13sp" />
+
+    <LinearLayout
+        android:id="@+id/layoutActions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="8dp"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:visibility="gone" />
 </LinearLayout>
