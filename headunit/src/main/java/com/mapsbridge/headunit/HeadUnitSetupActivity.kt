@@ -213,11 +213,6 @@ class HeadUnitSetupActivity : Activity() {
         val containers = intArrayOf(R.id.dockMaps, R.id.dockTikTok, R.id.dockYouTube)
         val icons = intArrayOf(R.id.ivDockMaps, R.id.ivDockTikTok, R.id.ivDockYouTube)
         val labels = intArrayOf(R.id.tvDockLabel0, R.id.tvDockLabel1, R.id.tvDockLabel2)
-        val fallbackIcons = intArrayOf(
-            android.R.drawable.ic_menu_mapmode,
-            android.R.drawable.ic_media_play,
-            android.R.drawable.ic_media_play
-        )
         val prefs = getSharedPreferences(PREFS_LAUNCHER, MODE_PRIVATE)
 
         for (slot in 0..2) {
@@ -226,9 +221,7 @@ class HeadUnitSetupActivity : Activity() {
                 prefs.edit().putString(key, it).apply()
             }
             val iconView = findViewById<ImageView>(icons[slot])
-            val appIcon = loadAppIcon(packageName)
-            iconView.setImageDrawable(appIcon ?: getDrawable(fallbackIcons[slot]))
-            if (appIcon == null) iconView.setColorFilter(Color.WHITE) else iconView.clearColorFilter()
+            iconView.setImageResource(getVectorIconForPackage(packageName))
             findViewById<TextView>(labels[slot]).text =
                 runCatching { packageLabel(packageName) }.getOrDefault(defaultDockLabel(slot))
 
@@ -240,6 +233,13 @@ class HeadUnitSetupActivity : Activity() {
                 }
             }
         }
+    }
+
+    private fun getVectorIconForPackage(pkg: String): Int = when (pkg) {
+        "com.google.android.apps.maps" -> R.drawable.ic_vec_maps
+        "com.ss.android.ugc.trill", "com.zhiliaoapp.musically" -> R.drawable.ic_vec_tiktok
+        "com.google.android.youtube" -> R.drawable.ic_vec_youtube
+        else -> R.drawable.ic_vec_app_generic
     }
 
     private fun defaultDockPackage(slot: Int): String = when (slot) {
@@ -377,9 +377,6 @@ class HeadUnitSetupActivity : Activity() {
             showAppUnavailable(packageLabel(packageName))
         }
     }
-
-    private fun loadAppIcon(packageName: String) =
-        runCatching { packageManager.getApplicationIcon(packageName) }.getOrNull()
 
     private fun findInstalledPackage(candidates: List<String>): String? =
         candidates.firstOrNull { packageManager.getLaunchIntentForPackage(it) != null }
