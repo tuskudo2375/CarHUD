@@ -30,6 +30,7 @@ import java.util.Calendar
 
 class HeadUnitSetupActivity : Activity() {
     companion object {
+        @Volatile var isLauncherResumed: Boolean = false
         private const val PERMISSION_REQUEST = 506
         private const val WALLPAPER_REQUEST = 507
         private const val PREFS_LAUNCHER = "launcher_prefs"
@@ -83,6 +84,7 @@ class HeadUnitSetupActivity : Activity() {
 
     override fun onResume() {
         super.onResume()
+        isLauncherResumed = true
         HeadUnitService.onConnectionStateChanged = { connected -> renderConnectionState(connected) }
         renderConnectionState(HeadUnitService.isConnected)
         updateCalendarDates()
@@ -104,12 +106,18 @@ class HeadUnitSetupActivity : Activity() {
     }
 
     override fun onPause() {
+        isLauncherResumed = false
         HeadUnitService.onConnectionStateChanged = null
         if (timeTickReceiverRegistered) {
             try { unregisterReceiver(timeTickReceiver) } catch (_: IllegalArgumentException) { }
             timeTickReceiverRegistered = false
         }
         super.onPause()
+    }
+
+    override fun onStop() {
+        isLauncherResumed = false
+        super.onStop()
     }
 
     @Deprecated("Deprecated in Android")

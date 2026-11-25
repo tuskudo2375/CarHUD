@@ -16,6 +16,7 @@ class NavLauncherActivity : Activity() {
     companion object {
         const val EXTRA_NAV_URI = "com.mapsbridge.headunit.EXTRA_NAV_URI"
         const val EXTRA_FALLBACK_URL = "com.mapsbridge.headunit.EXTRA_FALLBACK_URL"
+        const val EXTRA_CMD_ID = "com.mapsbridge.headunit.EXTRA_CMD_ID"
         private const val MAPS_PACKAGE = "com.google.android.apps.maps"
     }
 
@@ -52,6 +53,7 @@ class NavLauncherActivity : Activity() {
         pendingLaunch?.let(mainHandler::removeCallbacks)
         val navUri = sourceIntent.getStringExtra(EXTRA_NAV_URI).orEmpty()
         val fallbackUrl = sourceIntent.getStringExtra(EXTRA_FALLBACK_URL).orEmpty()
+        val commandId = sourceIntent.getStringExtra(EXTRA_CMD_ID).orEmpty()
         runCatching {
             val activityManager = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
             activityManager.killBackgroundProcesses(MAPS_PACKAGE)
@@ -59,11 +61,29 @@ class NavLauncherActivity : Activity() {
 
         val launch = Runnable {
             try {
-                when {
-                    navUri.isNotBlank() -> startActivity(createMapsIntent(navUri))
-                    fallbackUrl.isNotBlank() -> startActivity(createMapsIntent(fallbackUrl))
+                val mapIntent = when {
+                    navUri.isNotBlank() -> createMapsIntent(navUri)
+                    fallbackUrl.isNotBlank() -> createMapsIntent(fallbackUrl)
+                    else -> null
                 }
-            } finally {
+                if (mapIntent == null) {
+                    pendingLaunch = null
+                    finish()
+                    return@Runnable
+                }
+                startActivity(mapIntent)
+                mainHandler.postDelayed({
+                    try {
+                        if (HeadUnitSetupActivity.isLauncherResumed) startActivity(mapIntent)
+                        HeadUnitService.instance?.sendAckExecuted(commandId)
+                    } catch (_: Throwable) {
+                        // Do not acknowledge a launch that failed both foreground attempts.
+                    } finally {
+                        pendingLaunch = null
+                        finish()
+                    }
+                }, 800L)
+            } catch (_: Throwable) {
                 pendingLaunch = null
                 finish()
             }

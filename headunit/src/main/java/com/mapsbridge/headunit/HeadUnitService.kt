@@ -27,8 +27,10 @@ import java.util.Date
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
-import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.ScheduledFuture
+import java.util.concurrent.TimeUnit
 
 class HeadUnitService : Service() {
     companion object {
@@ -47,8 +49,8 @@ class HeadUnitService : Service() {
     private val restartRequested = AtomicBoolean(false)
     private val writeLock = Any()
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val navResolverExecutor: ExecutorService = Executors.newSingleThreadExecutor { task ->
-        Thread(task, "MapsBridge-Resolve-URL")
+    private val sdpWatchdog: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { task ->
+        Thread(task, "MapsBridge-SDP-Watchdog")
     }
     @Volatile private var serverSocket: BluetoothServerSocket? = null
     @Volatile private var clientSocket: BluetoothSocket? = null
@@ -92,6 +94,9 @@ class HeadUnitService : Service() {
         while (running.get()) {
             var listener: BluetoothServerSocket? = null
             var peer: BluetoothSocket? = null
+            var staleListenerRefresh = false
+            var sdpTimeoutFlag: AtomicBoolean? = null
+            var sdpRefresh: ScheduledFuture<*>? = null
             try {
                 val adapter = BluetoothAdapter.getDefaultAdapter()
                 if (adapter?.isEnabled != true) {
@@ -99,11 +104,20 @@ class HeadUnitService : Service() {
                     Thread.sleep(1_000)
                     continue
                 }
-                val activeListener = adapter.listenUsingRfcommWithServiceRecord("MapsBridge", SERVICE_UUID)
+                val activeListener = adapter.listenUsingInsecureRfcommWithServiceRecord("MapsBridge", SERVICE_UUID)
                 listener = activeListener
                 serverSocket = activeListener
                 updateStatus("Đang chờ kết nối từ Máy Chính...")
+                val staleSdpRefreshRequested = AtomicBoolean(false)
+                sdpTimeoutFlag = staleSdpRefreshRequested
+                sdpRefresh = sdpWatchdog.schedule({
+                    if (serverSocket === activeListener && running.get()) {
+                        staleSdpRefreshRequested.set(true)
+                        runCatching { activeListener.close() }
+                    }
+                }, 900_000L, TimeUnit.MILLISECONDS)
                 val connectedPeer = activeListener.accept()
+                sdpRefresh?.cancel(false)
                 peer = connectedPeer
                 clientSocket = connectedPeer
                 setConnectionState(true)
@@ -146,10 +160,12 @@ class HeadUnitService : Service() {
                 if (!running.get()) break
                 Log.i(TAG, "RFCOMM listener restart requested")
             } catch (e: Exception) {
+                staleListenerRefresh = sdpTimeoutFlag?.get() == true
                 if (running.get()) {
                     Log.i(TAG, "RFCOMM disconnected; restarting listener", e)
                 }
             } finally {
+                sdpRefresh?.cancel(false)
                 runCatching { peer?.close() }
                 if (clientSocket === peer) clientSocket = null
                 if (peer != null) setConnectionState(false)
@@ -159,6 +175,9 @@ class HeadUnitService : Service() {
             if (running.get()) {
                 if (restartRequested.getAndSet(false)) {
                     updateStatus("Đang làm mới kết nối Bluetooth...")
+                } else if (staleListenerRefresh) {
+                    // A stale SDP listener is recreated without the normal backoff.
+                    updateStatus("Đang làm mới dịch vụ Bluetooth...")
                 } else {
                     updateStatus("Mất kết nối — đang tự động làm mới...")
                     try {
@@ -196,29 +215,25 @@ class HeadUnitService : Service() {
             when (message.optString("type")) {
                 "PING" -> Unit
                 "NAV_SHARE" -> {
+                    val id = message.optString("id")
+                    val query = message.optString("query").trim()
+                    val fallbackUrl = message.optString("fallbackUrl").trim()
+                    if (id.isNotBlank()) sendControlMessage(JSONObject().put("type", "ACK_RECEIVED").put("id", id).toString())
                     wakeScreen()
-                    val payload = message.optString("payload")
-                    navResolverExecutor.execute {
-                        try {
-                            val resolved = UrlResolver.extractDestination(payload)
-                            val query = resolved.query
-                            val fallbackUrl = resolved.fallbackUrl
-                            when {
-                                !query.isNullOrBlank() -> launchNavLauncher(
-                                    NavLauncherActivity.EXTRA_NAV_URI,
-                                    "google.navigation:q=${Uri.encode(query)}&mode=l",
-                                    query
-                                )
-                                !fallbackUrl.isNullOrBlank() -> launchNavLauncher(
-                                    NavLauncherActivity.EXTRA_FALLBACK_URL,
-                                    fallbackUrl,
-                                    null
-                                )
-                                else -> updateStatus("Không nhận diện được địa điểm")
-                            }
-                        } catch (e: Throwable) {
-                            updateStatus("Lỗi gói tin: ${e.javaClass.simpleName}")
-                        }
+                    when {
+                        query.isNotEmpty() -> launchNavLauncher(
+                            id,
+                            NavLauncherActivity.EXTRA_NAV_URI,
+                            "google.navigation:q=${Uri.encode(query)}&mode=l",
+                            query
+                        )
+                        fallbackUrl.isNotEmpty() -> launchNavLauncher(
+                            id,
+                            NavLauncherActivity.EXTRA_FALLBACK_URL,
+                            fallbackUrl,
+                            null
+                        )
+                        else -> updateStatus("Không nhận diện được địa điểm")
                     }
                 }
                 "NOTIF" -> {
@@ -246,11 +261,12 @@ class HeadUnitService : Service() {
         false
     }
 
-    private fun launchNavLauncher(extraName: String, extraValue: String, queryForStatus: String?) {
+    private fun launchNavLauncher(commandId: String, extraName: String, extraValue: String, queryForStatus: String?) {
         try {
             val launcherIntent = Intent(this, NavLauncherActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
                 putExtra(extraName, extraValue)
+                putExtra(NavLauncherActivity.EXTRA_CMD_ID, commandId)
             }
             startActivity(launcherIntent)
             updateStatus(
@@ -329,21 +345,29 @@ class HeadUnitService : Service() {
         }
     }
 
+    fun sendAckExecuted(commandId: String) {
+        if (commandId.isBlank()) return
+        sendControlMessage(JSONObject().put("type", "ACK_EXECUTED").put("id", commandId).toString())
+    }
+
     private fun sendActionClick(key: String, actionIndex: Int) {
+        sendControlMessage(JSONObject()
+            .put("type", "ACTION_CLICK")
+            .put("key", key)
+            .put("actionIndex", actionIndex)
+            .toString())
+    }
+
+    private fun sendControlMessage(json: String) {
         val peer = clientSocket ?: return
         if (!peer.isConnected) return
         try {
-            val json = JSONObject()
-                .put("type", "ACTION_CLICK")
-                .put("key", key)
-                .put("actionIndex", actionIndex)
-                .toString()
             synchronized(writeLock) {
                 peer.outputStream.write((json + "\n").toByteArray(StandardCharsets.UTF_8))
                 peer.outputStream.flush()
             }
         } catch (e: Throwable) {
-            Log.w(TAG, "Could not send quick reply", e)
+            Log.w(TAG, "Could not send Bluetooth response", e)
             runCatching { peer.close() }
             updateStatus("Không gửi được trả lời Bluetooth")
         }
@@ -391,7 +415,7 @@ class HeadUnitService : Service() {
 
     override fun onDestroy() {
         running.set(false)
-        navResolverExecutor.shutdownNow()
+        sdpWatchdog.shutdownNow()
         try { serverSocket?.close() } catch (_: Exception) { }
         try { clientSocket?.close() } catch (_: Exception) { }
         serverThread?.interrupt()
