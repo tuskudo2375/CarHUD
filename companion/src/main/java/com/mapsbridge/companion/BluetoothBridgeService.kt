@@ -29,6 +29,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 class BluetoothBridgeService : Service() {
     companion object {
@@ -58,12 +59,16 @@ class BluetoothBridgeService : Service() {
     private val writeLock = Any()
     private val socketMonitor = Object()
     private val pendingAcks = ConcurrentHashMap<String, CountDownLatch>()
+    private val pendingReceipts = ConcurrentHashMap<String, CountDownLatch>()
+    private val shareSequence = AtomicLong(0L)
     private val navigationExecutor: ExecutorService = Executors.newSingleThreadExecutor { task ->
         Thread(task, "MapsBridge-Resolve-And-Send")
     }
     private val mainHandler = Handler(Looper.getMainLooper())
     @Volatile private var socket: BluetoothSocket? = null
     @Volatile private var worker: Thread? = null
+    @Volatile private var latestCmdId: String? = null
+    @Volatile private var activeAckLatch: CountDownLatch? = null
     @Volatile private var connectionStatus = "Đang chờ kết nối Thiết bị Phụ"
 
     override fun onCreate() {
@@ -84,10 +89,15 @@ class BluetoothBridgeService : Service() {
     }
 
     fun submitNavigationShare(rawText: String) {
+        activeAckLatch?.countDown()
+        val requestSequence = shareSequence.incrementAndGet()
+        synchronized(socketMonitor) { socketMonitor.notifyAll() }
         navigationExecutor.execute {
             try {
                 val resolved = UrlResolver.extractDestination(rawText)
                 val cmdId = System.currentTimeMillis().toString()
+                if (requestSequence != shareSequence.get()) return@execute
+                latestCmdId = cmdId
                 val navJson = JSONObject()
                     .put("type", "NAV_SHARE")
                     .put("id", cmdId)
@@ -96,21 +106,41 @@ class BluetoothBridgeService : Service() {
                     .toString()
 
                 var executed = false
-                repeat(3) {
-                    if (executed) return@repeat
+                var attempts = 0
+                while (attempts < 20 && !executed && latestCmdId == cmdId && requestSequence == shareSequence.get()) {
+                    attempts++
                     val latch = CountDownLatch(1)
+                    val receiptLatch = CountDownLatch(1)
+                    activeAckLatch = latch
                     pendingAcks[cmdId] = latch
-                    val connected = awaitConnectedSocket(5_000L)
+                    pendingReceipts[cmdId] = receiptLatch
+                    val connected = awaitConnectedSocket(1_000L, requestSequence)
+                    if (requestSequence != shareSequence.get() || latestCmdId != cmdId) {
+                        pendingAcks.remove(cmdId, latch)
+                        pendingReceipts.remove(cmdId, receiptLatch)
+                        if (activeAckLatch === latch) activeAckLatch = null
+                        break
+                    }
+                    if (!connected) forceReconnect()
                     if (connected && sendJson(navJson)) {
-                        executed = latch.await(2_500L, TimeUnit.MILLISECONDS)
+                        executed = latch.await(1_000L, TimeUnit.MILLISECONDS)
+                        if (!executed && receiptLatch.await(0L, TimeUnit.MILLISECONDS)) {
+                            executed = latch.await(1_000L, TimeUnit.MILLISECONDS)
+                        }
                     }
                     pendingAcks.remove(cmdId, latch)
-                    if (!executed) {
+                    pendingReceipts.remove(cmdId, receiptLatch)
+                    if (activeAckLatch === latch) activeAckLatch = null
+                    if (!executed && latestCmdId == cmdId && requestSequence == shareSequence.get()) {
                         forceReconnect()
-                        Thread.sleep(300L)
+                        Thread.sleep(200L)
                     }
                 }
-                showToast(if (executed) "Máy Phụ đã mở dẫn đường!" else "Không kết nối được Máy Phụ!")
+                if (executed && latestCmdId == cmdId && requestSequence == shareSequence.get()) {
+                    showToast("Máy Phụ đã mở dẫn đường!")
+                } else if (!executed && latestCmdId == cmdId && requestSequence == shareSequence.get()) {
+                    showToast("Không kết nối được Máy Phụ!")
+                }
             } catch (e: Throwable) {
                 Log.e(TAG, "Could not send navigation share", e)
                 showToast("Không kết nối được Máy Phụ!")
@@ -145,10 +175,10 @@ class BluetoothBridgeService : Service() {
         synchronized(socketMonitor) { socketMonitor.notifyAll() }
     }
 
-    private fun awaitConnectedSocket(timeoutMs: Long): Boolean {
+    private fun awaitConnectedSocket(timeoutMs: Long, requestSequence: Long): Boolean {
         val deadline = System.currentTimeMillis() + timeoutMs
         synchronized(socketMonitor) {
-            while (running.get()) {
+            while (running.get() && requestSequence == shareSequence.get()) {
                 val current = socket
                 if (current != null && runCatching { current.isConnected }.getOrDefault(false)) return true
                 val left = deadline - System.currentTimeMillis()
@@ -190,7 +220,7 @@ class BluetoothBridgeService : Service() {
                 val heartbeatRunning = AtomicBoolean(true)
                 val heartbeat = Thread({
                     while (running.get() && heartbeatRunning.get() && connectedSocket.isConnected) {
-                        try { Thread.sleep(5_000) } catch (_: InterruptedException) { break }
+                        try { Thread.sleep(1_500L) } catch (_: InterruptedException) { break }
                         if (running.get() && heartbeatRunning.get() && connectedSocket.isConnected) sendJson("{\"type\":\"PING\"}")
                     }
                 }, "MapsBridge-Heartbeat").also { it.start() }
@@ -200,6 +230,7 @@ class BluetoothBridgeService : Service() {
                         try {
                             val message = JSONObject(line)
                             when (message.optString("type")) {
+                                "ACK_RECEIVED" -> pendingReceipts[message.optString("id")]?.countDown()
                                 "ACK_EXECUTED" -> pendingAcks[message.optString("id")]?.countDown()
                                 "ACTION_CLICK" -> CompanionNotifService.instance?.executeAction(
                                     notifKey = message.optString("key"),
@@ -231,7 +262,7 @@ class BluetoothBridgeService : Service() {
     }
 
     private fun sleepBeforeRetry() {
-        try { Thread.sleep(3_000) } catch (_: InterruptedException) { Thread.interrupted() }
+        try { Thread.sleep(500L) } catch (_: InterruptedException) { Thread.interrupted() }
     }
 
     private fun showToast(text: String) {
@@ -274,6 +305,8 @@ class BluetoothBridgeService : Service() {
         navigationExecutor.shutdownNow()
         pendingAcks.values.forEach { it.countDown() }
         pendingAcks.clear()
+        pendingReceipts.values.forEach { it.countDown() }
+        pendingReceipts.clear()
         if (instance === this) instance = null
         super.onDestroy()
     }

@@ -115,7 +115,7 @@ class HeadUnitService : Service() {
                         staleSdpRefreshRequested.set(true)
                         runCatching { activeListener.close() }
                     }
-                }, 900_000L, TimeUnit.MILLISECONDS)
+                }, 180_000L, TimeUnit.MILLISECONDS)
                 val connectedPeer = activeListener.accept()
                 sdpRefresh?.cancel(false)
                 peer = connectedPeer
@@ -130,12 +130,12 @@ class HeadUnitService : Service() {
                 val watchdog = Thread({
                     while (running.get() && watchdogRunning.get() && connectedPeer.isConnected) {
                         try {
-                            Thread.sleep(3_000)
+                            Thread.sleep(1_000L)
                         } catch (_: InterruptedException) {
                             break
                         }
                         if (running.get() && watchdogRunning.get() &&
-                            System.currentTimeMillis() - lastPacketTime > 12_000L) {
+                            System.currentTimeMillis() - lastPacketTime > 4_000L) {
                             runCatching { connectedPeer.close() }
                             break
                         }
@@ -181,7 +181,7 @@ class HeadUnitService : Service() {
                 } else {
                     updateStatus("Mất kết nối — đang tự động làm mới...")
                     try {
-                        Thread.sleep(500)
+                        Thread.sleep(150L)
                     } catch (_: InterruptedException) {
                         Thread.interrupted()
                     }

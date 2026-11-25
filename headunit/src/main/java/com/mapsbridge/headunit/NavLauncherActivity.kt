@@ -82,14 +82,14 @@ class NavLauncherActivity : Activity() {
                         pendingLaunch = null
                         finish()
                     }
-                }, 800L)
+                }, 400L)
             } catch (_: Throwable) {
                 pendingLaunch = null
                 finish()
             }
         }
         pendingLaunch = launch
-        mainHandler.postDelayed(launch, 350L)
+        mainHandler.postDelayed(launch, 150L)
     }
 
     private fun createMapsIntent(uri: String): Intent =
